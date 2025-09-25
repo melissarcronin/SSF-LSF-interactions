@@ -15,7 +15,7 @@
 #
 # Outputs:
 #   - data/processed/TKTK .csv
-#   - outputs/figures/TKTK
+#   - outputs/figures/TKTK poo
 #
 # Run Order:
 #   This is script 01 in the workflow:
