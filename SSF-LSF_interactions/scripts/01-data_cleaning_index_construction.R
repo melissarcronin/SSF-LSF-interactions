@@ -1,5 +1,5 @@
 ###############################################################################
-# SSF Dependence Country Prioritization using IHH Data
+# Clean LSF and SSF data to create 3 SIFI Index components; construct SIFI Index
 # 
 # Description: 
 #   This script cleans and standardizes all SIFI Index data and constructs the SIFI Index.
@@ -30,8 +30,7 @@ rm(list = ls())  # Clear environment to avoid conflicts
 # --- 2. Install and Load Packages -------------------------------------------
 required_packages <- c(
   # Data manipulation
-  "dplyr", "tidyr", "forcats", "countrycode", "here",
-  
+  "dplyr", "tidyr", "forcats", "countrycode", "here","stringr", 
   # Visualization
   "ggplot2", "viridis", "ggrepel", "scico", "patchwork", "cowplot",
   
@@ -82,16 +81,20 @@ world_shp <- sf::st_as_sf(maps::map("world", plot = F, fill = TRUE))
 world_shp_df <- world_shp %>%
   mutate(Alpha.3.code = countrycode(ID, "country.name", "iso3c", warn = FALSE))
 
+zipfile <- here("data", "buffered_25km_GIS.zip")
 
-# get 
-#setwd("/Users/melissacronin/Desktop/clean_ihh_project_data/buffer_25km_GIS/buffered_25km_GIS_files")
+shapefile_dir <- here("data")  # unzip to data/
 
-coastal_buffer <- st_read(here("data", "buffer_25km_GIS", "resultLayer.shp")) %>%
+# Unzip only if resultLayer.shp does not exist
+shp_path <- file.path(shapefile_dir, "resultLayer.shp")
+if(!file.exists(shp_path)){
+  unzip(zipfile, exdir = shapefile_dir)
+  if(!file.exists(shp_path)){
+    stop("Shapefile not found after unzipping. Check zip contents.")
+  }
+}
+coastal_buffer <- st_read(shp_path) %>%
   filter(sum_Area_S >= 1) %>%
-  mutate(eez = str_replace(eez, " Exclusive Economic Zone", ""))
-
-coastal_buffer<- st_read("resultLayer.shp") %>% 
-  filter(sum_Area_S>=1) %>% 
   mutate(eez = str_replace(eez, " Exclusive Economic Zone", ""))
 
 # Add a column with ISO country codes
@@ -201,9 +204,7 @@ coastal_buffer_final<- coastal_buffer_joined %>%
 coastal_buffer_df<- coastal_buffer_final %>% 
   st_drop_geometry()
 
-#write.csv(coastal_buffer_df, "coastal_buffer_iso.csv")
-
-
+#look at the buffer 
 ggplot() +
   geom_sf(data = world_shp, fill = "lightgray", color = "darkgray") +
   geom_sf(data = coastal_buffer_final, aes(color = sum_area)) +
@@ -214,27 +215,33 @@ ggplot() +
 
 #Now, load fishing data, which should be scaled by country's square km within 100km. each variable shouold be scaled.
 
-setwd("/Users/melissacronin/Desktop/global_GFW_data/Fishing25km")
-fishing_hours<-read.csv( "SUMFishing25kmBuff.csv", sep=",", header = T) %>% 
+gfw_dir <- here("data","GFWFishing25km")
+
+# SUMFishing25kmBuff.csv
+csv_path <- file.path(gfw_dir, "SUMFishing25kmBuff.csv")
+fishing_hours <- read.csv(csv_path, sep = ",", header = TRUE) %>% 
   dplyr::select(ISO_TER1, fishing_hours) %>% 
   group_by(ISO_TER1) %>% 
-  summarise(fishing_hours=sum(fishing_hours, na.rm = TRUE)) # %>%   filter(ISO_TER1!="CHN")
+  summarise(fishing_hours = sum(fishing_hours, na.rm = TRUE))
 
-presence_hours<-read.csv( "SUMFishing25kmBuff.csv", sep=",", header = T) %>% 
-  dplyr::select(ISO_TER1,hours, fishing_hours)  %>% 
+presence_hours <- read.csv(csv_path, sep = ",", header = TRUE) %>% 
+  dplyr::select(ISO_TER1, hours, fishing_hours) %>% 
   group_by(ISO_TER1) %>% 
-  summarise(presence_hours=sum(hours, na.rm = TRUE)) # %>%  filter(ISO_TER1!="CHN")
+  summarise(presence_hours = sum(hours, na.rm = TRUE))
 
-vessels_present<-read.csv( "VesselsPresentCount25km.csv", sep=",", header = T) %>% 
-  dplyr::select(ISO_TER1, mmsi)%>% 
+# VesselsPresentCount25km.csv
+vessels_present_path <- file.path(gfw_dir, "VesselsPresentCount25km.csv")
+vessels_present <- read.csv(vessels_present_path, sep = ",", header = TRUE) %>% 
+  dplyr::select(ISO_TER1, mmsi) %>% 
   group_by(ISO_TER1) %>% 
-   summarise(vessels_present_count=sum( unique(mmsi), na.rm = TRUE))# %>%  filter(ISO_TER1!="CHN")
+  summarise(vessels_present_count = sum(unique(mmsi), na.rm = TRUE))
 
-vessels_fishing<-read.csv( "VesselsFishingCount25km.csv", sep=",", header = T) %>% 
-  dplyr::select(ISO_TER1,  mmsi) %>% 
+# VesselsFishingCount25km.csv
+vessels_fishing_path <- file.path(gfw_dir, "VesselsFishingCount25km.csv")
+vessels_fishing <- read.csv(vessels_fishing_path, sep = ",", header = TRUE) %>% 
+  dplyr::select(ISO_TER1, mmsi) %>% 
   group_by(ISO_TER1) %>% 
-  summarise(vessels_fishing_count=sum(unique(mmsi), na.rm = TRUE))# %>%  filter(ISO_TER1!="CHN")
-
+  summarise(vessels_fishing_count = sum(unique(mmsi), na.rm = TRUE))
 
 
 # Left join fishing_hours and vessels_present
@@ -244,7 +251,6 @@ merged_df <-fishing_hours %>%
   left_join(vessels_fishing,  by = c("ISO_TER1")) %>% 
   rename(iso_code=ISO_TER1)
 
-sum(merged_df$vessels_fishing_count)
 
 # Scale the variables by square kilometers of the 100 km band
 final_df <- merged_df%>%
@@ -256,7 +262,7 @@ final_df <- merged_df%>%
 
 merged_data <- left_join(final_df,coastal_buffer_final, by = c("iso_code")) 
 
-
+#create Criteria 1.1.A ()
 crit_1_1_A_data<- merged_data %>% 
   mutate_all(~ifelse(is.na(.), 0, .)) %>% 
   ungroup() %>% 
