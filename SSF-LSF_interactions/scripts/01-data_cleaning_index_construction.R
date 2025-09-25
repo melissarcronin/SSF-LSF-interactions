@@ -30,14 +30,15 @@ rm(list = ls())  # Clear environment to avoid conflicts
 # --- 2. Install and Load Packages -------------------------------------------
 required_packages <- c(
   # Data manipulation
-  "dplyr", "tidyr", "forcats", "countrycode",
+  "dplyr", "tidyr", "forcats", "countrycode", "here",
   
   # Visualization
   "ggplot2", "viridis", "ggrepel", "scico", "patchwork", "cowplot",
   
   # Mapping
   "sf", "rnaturalearth", "rnaturalearthdata", "cartogram", 
-  "raster", "rgeos", "maps",
+  "raster", "maps",
+  #"rgeos", 
   
   # Tables and summaries
   "table1", "ggpubr",
@@ -83,7 +84,12 @@ world_shp_df <- world_shp %>%
 
 
 # get 
-setwd("/Users/melissacronin/Desktop/clean_ihh_project_data/buffer_25km_GIS/buffered_25km_GIS_files")
+#setwd("/Users/melissacronin/Desktop/clean_ihh_project_data/buffer_25km_GIS/buffered_25km_GIS_files")
+
+coastal_buffer <- st_read(here("data", "buffer_25km_GIS", "resultLayer.shp")) %>%
+  filter(sum_Area_S >= 1) %>%
+  mutate(eez = str_replace(eez, " Exclusive Economic Zone", ""))
+
 coastal_buffer<- st_read("resultLayer.shp") %>% 
   filter(sum_Area_S>=1) %>% 
   mutate(eez = str_replace(eez, " Exclusive Economic Zone", ""))
