@@ -28,7 +28,7 @@
 rm(list = ls())  # Clear environment to avoid conflicts
 
 # --- 2. Install and Load Packages -------------------------------------------
-required_packages <- c(
+required_packages <- c("here",
   # Data manipulation
   "dplyr", "tidyr", "forcats", "countrycode",
   
@@ -72,20 +72,79 @@ color_scale <- scale_fill_viridis_c(
 # COMPONENT 1. EXPOSURE ########
 ###############################################################################
 
-## 1_1 Composite index of intensity of nearshore large-scale fishing activity 3####
+## 1_1 Construct composite index of intensity of nearshore large-scale fishing activity 3####
 
-#first, need a calculation of square km of area within 100km for every country 
+# 1. Read CSV 
+gfw_data <- read.csv("https://raw.githubusercontent.com/melissarcronin/SSF-LSF-interactions/refs/heads/main/SSF-LSF_interactions/data/gfw_fishing_SAR_matched.csv?token=GHSAT0AAAAAADL5PYY6F5ONP3R3WHXB6PB42HFNXTA") %>%  filter(country_name!="") %>% #remove eez null fishing
+  dplyr::select(country_name, matched_fishing, unmatched_fishing)
+
+#1_1_B Ratio of undetected fishing to detected fishing
+#Ratio of LSF fishing activity that is not publicly tracked (AIS activity is missing from public monitoring systems) to fishing activity that is publicly tracked with 25 km of shore
+
+gfw_data$Alpha.3.code <- countrycode(gfw_data$country_name, "country.name", "iso3c")
+
+countries_subset <- c( #the package missed.a few codes, so manually input them 
+  "Bonaire" = "BES",
+  "Saint Martin" = "MAF") 
+
+#create crit_1_1_A : Matched LSF density AIS-matched vessel detections
+
+crit_1_1_A_data <- gfw_data %>%
+  mutate(Alpha.3.code = if_else(country_name %in% names(countries_subset), 
+                                countries_subset[country_name], 
+                                Alpha.3.code)) %>% 
+  rename(crit_1_1_A_raw= matched_fishing) %>% 
+  mutate(crit_1_1_A_log  = log(crit_1_1_A_raw+1)) %>% 
+  mutate(crit_1_1_A  =scales::rescale(crit_1_1_A_log ))
+
+crit_1_1_A_data %>% 
+  ggplot()+
+  geom_histogram(aes(x=crit_1_1_A))
+
+
+#######
+#create crit_1_1_B : Non-matched (eg non-broadcasting) LSF density vessel detections
+crit_1_1_B_data <- gfw_data %>%
+  mutate(Alpha.3.code = if_else(country_name %in% names(countries_subset), 
+                                countries_subset[country_name], 
+                                Alpha.3.code)) %>% 
+  rename(crit_1_1_B_raw= unmatched_fishing) %>% 
+  mutate(crit_1_1_B_log  = log(crit_1_1_B_raw+1)) %>% 
+  mutate(crit_1_1_B  =scales::rescale(crit_1_1_B_log ))
+
+
+crit_1_1_B_data %>% 
+ggplot()+
+  geom_histogram(aes(x=crit_1_1_B))
+
+#create crit_1_1 : LSF density: mean (AIS-matched and non-matched vessel detections)
+crit_1_1_data<- crit_1_1_A_data %>% 
+  left_join(crit_1_1_B_data, by = c("Alpha.3.code", "country_name")) %>%
+  as.data.frame() %>% 
+  drop_na() %>% 
+  mutate(crit_1_1 = rowMeans(dplyr::select(.,crit_1_1_A, crit_1_1_B) )) 
+  
+
+crit_1_1_data %>% 
+  ggplot()+
+  geom_histogram(aes(x=crit_1_1))
+
+shapiro.test(crit_1_1_data$crit_1_1)
+
+cor(crit_1_1_data$crit_1_1_A_raw,crit_1_1_data$crit_1_1_B_raw, ) #check correlation between LSF variables
+
+##1_2_A Contribution to global marine SSF production (scaled to nearshore area , IHH) #####
+#Description: Percent contribution of countries’ small-scale fisheries production to global small-scale fisheries production
+
+#first, need a calculation of square km of area within 25km for every country, using a buffer created in GIS
 # World polygons from the maps package
 world_shp <- sf::st_as_sf(maps::map("world", plot = F, fill = TRUE))
 
 world_shp_df <- world_shp %>%
   mutate(Alpha.3.code = countrycode(ID, "country.name", "iso3c", warn = FALSE))
 
-
-# get 
-setwd("/Users/melissacronin/Desktop/clean_ihh_project_data/buffer_25km_GIS/buffered_25km_GIS_files")
-coastal_buffer<- st_read("resultLayer.shp") %>% 
-  filter(sum_Area_S>=1) %>% 
+coastal_buffer <- st_read(here("data","buffered_25km_GIS_files","resultLayer.shp")) %>%
+  filter(sum_Area_S >= 1) %>%
   mutate(eez = str_replace(eez, " Exclusive Economic Zone", ""))
 
 # Add a column with ISO country codes
@@ -100,80 +159,80 @@ coastal_buffer<- coastal_buffer%>%
 
 #manually fix country codes for territories
 countries_subset <- c(
-    "Alaskan" = "USA",
-    "Amsterdam Island & St. Paul Island" = "ATF",
-    "Andaman and Nicobar Islands" = "IND",
-    "Ascension" = "SHN",
-    "Azores" = "PRT",
-    "Belgian" = "BEL",
-    "Bermudian" = "BMU",
-    "Bornholm" = "DNK",
-    "Canadian" = "CAN",
-    "Canary Islands" = "ESP",
-    "Chinese" = "CHN",
-    "Clipperton Island" = "FRA",
-    "Comoran" = "COM",
-    "Conflict Zone" = "Disputed",
-    "Crozet Islands" = "ATF",
-    "Cypriote" = "CYP",
-    "Danish" = "DNK",
-    "Dominican" = "DMA",
-    "Dutch" = "NLD",
-    "Easter Island" = "CHL",
-    "Finnish" = "FIN",
-    "French" = "FRA",
-    "Galapagos" = "ECU",
-    "German" = "DEU",
-    "Glorioso" = "FRA",
-    "Grecian" = "GRC",
-    "Grenadian" = "GRD",
-    "Guadeloupe & Martinique" = "GLP",
-    "Guyanese" = "GUY",
-    "Hawaiian" = "USA",
-    "Honduran" = "HND",
-    "Howland and Baker Island" = "UMI",
-    "Ile Europa" = "FRA",
-    "Ile Tromelin" = "FRA",
-    "Irish" = "IRL",
-    "Italian" = "ITA",
-    "Jan Mayen" = "NOR",
-    "Jarvis Island" = "UMI",
-    "Johnston Atoll" = "UMI",
-    "Juan de Nova" = "FRA",
-    "Kerguelen Islands" = "ATF",
-    "Lebanese" = "LBN",
-    "Line Group" = "KIR",
-    "Jan Mayen"= "SJM",
-    "Macquarie Island" = "AUS",
-    "Madagascan" = "MDG",
-    "Madeiran" = "PRT",
-    "Maltese" = "MLT",
-    "Mauritian" = "MUS",
-    "Micronesian" = "FSM",
-    "Monégasque" = "MCO",
-    "Moroccan" = "MAR",
-    "Mozambican" = "MOZ",
-    "Netherlands Antilles" = "ABW",
-    "Northern Mariana Islands and Guam" = "MNP",
-    "Norwegian" = "NOR",
-    "Oecussi Ambeno" = "TLS",
-    "Palmyra Atoll" = "UMI",
-    "Paracel Islands" = "Disputed",
-    "Phoenix Group" = "KIR",
-    "Polish" = "POL",
-    "Portuguese" = "PRT",
-    "Prince Edward Islands" = "ZAF",
-    "Puerto Rican" = "PRI",
-    "Russia-Japan conflict zone" = "Disputed",
-    "Saint-Martin" = "MAF",
-    "Serbia-Montenegrian" = "MNE",
-    "Somali" = "SOM",
-    "Spratly Island"= "Disputed",
-    "Swedish" = "SWE",
-    "Turkish" = "TUR",
-    "Virgin Islands" = "VIR",
-    "Wake Island" = "UMI"
-  )
+  "Alaskan" = "USA",
+  "Amsterdam Island & St. Paul Island" = "ATF",
+  "Andaman and Nicobar Islands" = "IND",
+  "Ascension" = "SHN",
+  "Azores" = "PRT",
+  "Belgian" = "BEL",
+  "Bermudian" = "BMU",
+  "Bornholm" = "DNK",
+  "Canadian" = "CAN",
+  "Canary Islands" = "ESP",
+  "Chinese" = "CHN",
+  "Clipperton Island" = "FRA",
+  "Comoran" = "COM",
+  "Conflict Zone" = "Disputed",
+  "Crozet Islands" = "ATF",
+  "Cypriote" = "CYP",
+  "Danish" = "DNK",
+  "Dominican" = "DMA",
+  "Dutch" = "NLD",
+  "Easter Island" = "CHL",
+  "Finnish" = "FIN",
+  "French" = "FRA",
+  "Galapagos" = "ECU",
+  "German" = "DEU",
+  "Glorioso" = "FRA",
+  "Grecian" = "GRC",
+  "Grenadian" = "GRD",
+  "Guadeloupe & Martinique" = "GLP",
+  "Guyanese" = "GUY",
+  "Hawaiian" = "USA",
+  "Honduran" = "HND",
+  "Howland and Baker Island" = "UMI",
+  "Ile Europa" = "FRA",
+  "Ile Tromelin" = "FRA",
+  "Irish" = "IRL",
+  "Italian" = "ITA",
+  "Jan Mayen" = "NOR",
+  "Jarvis Island" = "UMI",
+  "Johnston Atoll" = "UMI",
+  "Juan de Nova" = "FRA",
+  "Kerguelen Islands" = "ATF",
+  "Lebanese" = "LBN",
+  "Line Group" = "KIR",
+  "Jan Mayen"= "SJM",
+  "Macquarie Island" = "AUS",
+  "Madagascan" = "MDG",
+  "Madeiran" = "PRT",
+  "Maltese" = "MLT",
+  "Mauritian" = "MUS",
+  "Micronesian" = "FSM",
+  "Monégasque" = "MCO",
+  "Moroccan" = "MAR",
+  "Mozambican" = "MOZ",
+  "Netherlands Antilles" = "ABW",
+  "Northern Mariana Islands and Guam" = "MNP",
+  "Norwegian" = "NOR",
+  "Oecussi Ambeno" = "TLS",
+  "Palmyra Atoll" = "UMI",
+  "Paracel Islands" = "Disputed",
+  "Phoenix Group" = "KIR",
+  "Polish" = "POL",
+  "Portuguese" = "PRT",
+  "Prince Edward Islands" = "ZAF",
+  "Puerto Rican" = "PRI",
+  "Russia-Japan conflict zone" = "Disputed",
+  "Saint-Martin" = "MAF",
+  "Serbia-Montenegrian" = "MNE",
+  "Somali" = "SOM",
+  "Spratly Island"= "Disputed",
+  "Swedish" = "SWE",
+  "Turkish" = "TUR",
+  "Virgin Islands" = "VIR",
+  "Wake Island" = "UMI"
+)
 
 # Create a data frame with country names and ISO codes
 iso_mapping_df <- data.frame(
@@ -197,7 +256,6 @@ coastal_buffer_df<- coastal_buffer_final %>%
 
 #write.csv(coastal_buffer_df, "coastal_buffer_iso.csv")
 
-
 ggplot() +
   geom_sf(data = world_shp, fill = "lightgray", color = "darkgray") +
   geom_sf(data = coastal_buffer_final, aes(color = sum_area)) +
@@ -206,118 +264,10 @@ ggplot() +
   theme_classic()
 
 
-#Now, load fishing data, which should be scaled by country's square km within 100km. each variable shouold be scaled.
+#now add ssf catch data, to be scaled relative to nearshore area for each country
+#THIS DATA IS CONFIDENTIAL AND CANNOT BE SHARED. Calculation details remain here to clarify how the data was used in the analysis.  
 
-setwd("/Users/melissacronin/Desktop/global_GFW_data/Fishing25km")
-fishing_hours<-read.csv( "SUMFishing25kmBuff.csv", sep=",", header = T) %>% 
-  dplyr::select(ISO_TER1, fishing_hours) %>% 
-  group_by(ISO_TER1) %>% 
-  summarise(fishing_hours=sum(fishing_hours, na.rm = TRUE)) # %>%   filter(ISO_TER1!="CHN")
-
-presence_hours<-read.csv( "SUMFishing25kmBuff.csv", sep=",", header = T) %>% 
-  dplyr::select(ISO_TER1,hours, fishing_hours)  %>% 
-  group_by(ISO_TER1) %>% 
-  summarise(presence_hours=sum(hours, na.rm = TRUE)) # %>%  filter(ISO_TER1!="CHN")
-
-vessels_present<-read.csv( "VesselsPresentCount25km.csv", sep=",", header = T) %>% 
-  dplyr::select(ISO_TER1, mmsi)%>% 
-  group_by(ISO_TER1) %>% 
-   summarise(vessels_present_count=sum( unique(mmsi), na.rm = TRUE))# %>%  filter(ISO_TER1!="CHN")
-
-vessels_fishing<-read.csv( "VesselsFishingCount25km.csv", sep=",", header = T) %>% 
-  dplyr::select(ISO_TER1,  mmsi) %>% 
-  group_by(ISO_TER1) %>% 
-  summarise(vessels_fishing_count=sum(unique(mmsi), na.rm = TRUE))# %>%  filter(ISO_TER1!="CHN")
-
-
-
-# Left join fishing_hours and vessels_present
-merged_df <-fishing_hours %>% 
-  left_join( presence_hours, by = c("ISO_TER1"), relationship = "many-to-many") %>% 
-  left_join(vessels_present,  by = c("ISO_TER1")) %>% 
-  left_join(vessels_fishing,  by = c("ISO_TER1")) %>% 
-  rename(iso_code=ISO_TER1)
-
-sum(merged_df$vessels_fishing_count)
-
-# Scale the variables by square kilometers of the 100 km band
-final_df <- merged_df%>%
-  filter(!(
-    is.na(presence_hours) & #filter countries with no data at all. retain countries with <4 variables
-      is.na(fishing_hours) &
-      is.na(vessels_fishing_count) &
-      is.na(vessels_present_count)))
-
-merged_data <- left_join(final_df,coastal_buffer_final, by = c("iso_code")) 
-
-
-crit_1_1_A_data<- merged_data %>% 
-  mutate_all(~ifelse(is.na(.), 0, .)) %>% 
-  ungroup() %>% 
-  mutate(   hours  =  (presence_hours + fishing_hours )/ sum_area, 
-                 vessel_density =(vessels_fishing_count+vessels_present_count) /sum_area   ) %>%  
-  mutate(across(everything(), ~ifelse(. == "Inf", 0, .))) %>% 
-  mutate(crit_1_1_A_raw= hours+vessel_density ) %>% 
-  mutate(crit_1_1_A_log= log(crit_1_1_A_raw +1)) %>% 
-  mutate(crit_1_1_A  =scales::rescale(crit_1_1_A_log) ) %>% 
-  rename(Alpha.3.code=iso_code) %>% 
-  st_drop_geometry() %>% 
-  dplyr::select(-geometry) %>% 
-  filter(crit_1_1_A!="-Inf")
-
-#write.csv(crit_1_1_data, "crit_1_1_data.csv")
-
-crit_1_1_A_data %>% 
-ggplot()+
-  geom_histogram(aes(x=crit_1_1_A))
-
-shapiro.test(crit_1_1_A_data$crit_1_1_A)
-
-#1_1_B Ratio of undetected fishing to detected fishing
-#Ratio of LSF fishing activity that is not publicly tracked (AIS activity is missing from public monitoring systems) to fishing activity that is publicly tracked with 25 km of shore
-setwd("/Users/melissacronin/Desktop/clean_ihh_project_data/SAR_matched_data")
-sar_match_data<- read.csv("gfw_fishing_SAR_matched.csv", header=T, sep=",") %>% 
-  filter(country_name!="") #remove eez null fishing
-
-sar_match_data$Alpha.3.code <- countrycode(sar_match_data$country_name, "country.name", "iso3c")
-
-countries_subset <- c( #the package missed.a few codes, so manually input them 
-  "Bonaire" = "BES",
-  "Saint Martin" = "MAF") 
-
-crit_1_1_B_data <- sar_match_data %>%
-  mutate(Alpha.3.code = if_else(country_name %in% names(countries_subset), 
-                                countries_subset[country_name], 
-                                Alpha.3.code)) %>% 
-  rename(crit_1_1_B_raw= ratio_unmatch_matched) %>% 
-  mutate(crit_1_1_B_log  = log(crit_1_1_B_raw+1)) %>% 
-  mutate(crit_1_1_B  =scales::rescale(crit_1_1_B_log ))
-
-
-crit_1_1_B_data %>% 
-ggplot()+
-  geom_histogram(aes(x=crit_1_1_B_raw))
-
-crit_1_1_data<- crit_1_1_A_data %>% 
-  left_join(crit_1_1_B_data, by = "Alpha.3.code") %>%
-  as.data.frame() %>% 
-  drop_na() %>% 
-  mutate(crit_1_1_raw = rowMeans(dplyr::select(.,crit_1_1_A_raw, crit_1_1_B_raw) )) %>% 
-  mutate(crit_1_1 = rowMeans(dplyr::select(.,crit_1_1_A, crit_1_1_B) )) 
-  
-
-crit_1_1_data %>% 
-  ggplot()+
-  geom_histogram(aes(x=crit_1_1))
-
-shapiro.test(crit_1_1_data$crit_1_1)
-
-cor(crit_1_1_data$crit_1_1_A_raw,crit_1_1_data$crit_1_1_B_raw, )
-##1_2_A Contribution to global marine SSF production (scaled to nearshore area , IHH) #####
-#Description: Percent contribution of countries’ small-scale fisheries production to global small-scale fisheries production
-
-setwd("/Users/melissacronin/Desktop/IHH/IHH_country_criteria_prioritization")
-ssf_catch<- read.csv("lowest_SSF_global_sheet.csv", sep=",", header=TRUE) %>% 
+ssf_catch<- read.csv("ssf_catch.csv", sep=",", header=TRUE) %>% 
   filter(Marine_Inland_char=="Marine") %>% 
   group_by(country, country_ISO_alpha3) %>% 
   slice_head(n=1) %>%
@@ -335,43 +285,36 @@ ssf_catch_area<- ssf_catch %>%
 crit_1_2_data<- ssf_catch_area %>% 
   mutate(catch_per_area= log(national_catch_final)/log(sum_area)) %>% 
   rename(crit_1_2_raw= catch_per_area) %>% 
-  mutate( crit_1_2 = scales::rescale(crit_1_2_raw)) %>% 
+  mutate( crit_1_2 = scales::rescale(crit_1_2_raw, to = c(0, 1)) )%>% 
   rename(Alpha.3.code=country_ISO_alpha3) %>% 
   filter(crit_1_2!="NA")
 
 # Plot a histogram of normalized_crit_2_1_A
 ggplot(crit_1_2_data) +
-  geom_histogram(aes(x = crit_1_2_raw)) 
+  geom_histogram(aes(x = crit_1_2)) 
 
-  crit_1_2_df<- crit_1_2_data %>% 
+crit_1_2_df<- crit_1_2_data %>% 
   st_drop_geometry() %>% 
   dplyr::select(-geometry)
 
-setwd("/Users/melissacronin/Desktop/IHH/IHH_country_criteria_prioritization")
-
 shapiro.test(crit_1_2_df$crit_1_2)
 
-
-#write.csv(crit_1_2_df, "crit_1_2_data.csv")
 ##### Compile exposure variables #####
 
-
 ### CALCULATE EXPOSURE ######
+
 exposure_data_df<- crit_1_1_data %>% 
-  left_join(crit_1_2_data, by =c( "Alpha.3.code", "sum_area")) %>% 
+  left_join(crit_1_2_data, by =c( "Alpha.3.code")) %>% 
   drop_na() %>% 
   mutate(exposure_raw = rowMeans(dplyr::select(., crit_1_1, crit_1_2 ), na.rm = TRUE)) %>% 
- # mutate( exposure_original = crit_1_1 + crit_1_2) %>% 
   mutate(exposure_scaled=scales::rescale(exposure_raw)) %>% 
-  dplyr::select(Alpha.3.code,country, hours, vessel_density,
-                crit_1_1_raw,crit_1_1_A_raw,crit_1_1_B_raw, crit_1_2_raw, 
+  dplyr::select(Alpha.3.code,
+                #country, hours, vessel_density,
+                #crit_1_1_raw,crit_1_1_A_raw,crit_1_1_B_raw, crit_1_2_raw, 
                 crit_1_1,crit_1_1_A,crit_1_1_B, crit_1_2 ,exposure_scaled, exposure_raw) 
 
-
 shapiro.test(exposure_data_df$exposure_raw)
-#normal
 
-# Plot a histogram of normalized_crit_2_1_A
 ggplot(exposure_data_df) +
   geom_histogram(aes(x = exposure_raw)) 
 
@@ -382,9 +325,9 @@ exposure_data<- st_as_sf(joined_exp)
 cor(exposure_data_df$crit_1_1_A,exposure_data_df$exposure_raw)
 
 ggplot(exposure_data_df) +
-  geom_col(aes(x = fct_reorder(country, exposure_scaled), y = crit_1_1), fill = "pink", position = "dodge") +
-  geom_col(aes(x = fct_reorder(country, exposure_scaled), y = -crit_1_2), fill = "blue", position = "dodge") +
-  geom_col(aes(x = fct_reorder(country, exposure_scaled), y = exposure_scaled) ,fill = "green", position = "dodge") +
+  geom_col(aes(x = fct_reorder(Alpha.3.code, exposure_scaled), y = crit_1_1), fill = "pink", position = "dodge") +
+  geom_col(aes(x = fct_reorder(Alpha.3.code, exposure_scaled), y = -crit_1_2), fill = "blue", position = "dodge") +
+  geom_col(aes(x = fct_reorder(Alpha.3.code, exposure_scaled), y = exposure_scaled) ,fill = "green", position = "dodge") +
   coord_flip()
 
 ggplot(exposure_data_df) +
@@ -409,7 +352,7 @@ A<-exposure_data %>%
   geom_sf(data=world_shp, fill="lightgrey", color="white")+
   geom_sf(data=exposure_data, aes( fill= crit_1_1_A), color="lightgrey") +
   scale_fill_viridis_c(option="magma", direction=-1,  limits=c(0,1), breaks=c(0,0.5,1))+
-  labs( fill="Nearshore LSF activity / km^2 (AIS)") +
+  labs( fill="Nearshore density of matched vessels (broadcasting AIS)") +
   theme_classic()+
   theme(legend.position="top",
         legend.key.size = unit(0.5, "cm"))
@@ -419,7 +362,7 @@ B<-exposure_data %>%
   geom_sf(data=world_shp, fill="lightgrey", color="white")+
   geom_sf(data=exposure_data, aes( fill= crit_1_1_B), color="lightgrey") +
   scale_fill_viridis_c(option="magma", direction=-1, limits=c(0,1), breaks=c(0,0.5,1))+
-  labs( fill= "Unmatched vessel ratio (SAR)") +
+  labs( fill= "Nearshore density of unmatched vessels (not broadcasting AIS)") +
   theme_classic()+
   theme(legend.position="top",
         legend.key.size = unit(0.5, "cm"))  # Adjust plot margins
@@ -429,15 +372,16 @@ B
 C<-exposure_data %>% 
   ggplot() +
   geom_sf(data=world_shp, fill="lightgrey", color="white")+
-  geom_sf(data=exposure_data, aes( fill= crit_1_2_raw), color="lightgrey") +
-  scale_fill_viridis_c(option="magma", direction=-1,limits=c(0,1.5), breaks=c(0,0.5,1,1.5))+
-  labs(fill="SSF catch (kg) / km^2") +
+  geom_sf(data=exposure_data, aes( fill= crit_1_2), color="lightgrey") +
+  scale_fill_viridis_c(option="magma", direction=-1,limits=c(0,1), breaks=c(0,0.5,1))+
+  labs(fill="SSF catch (kg) / nearshore area km^2") +
   theme_classic()+  
   theme(legend.position="top")
 C
-A/B/C
+(A/B)+ C
 
 #ggsave("Fig_2_exposure.tiff", dpi=300, height=4, width=18)
+
 #check variable influence
 
 reshaped_exposure_data <- exposure_data %>%
@@ -466,9 +410,7 @@ exposure_means
 
 ### 2_1_A Contribution to SSF marine fisheries landed value (% of global marine SSF landed value, IHH) ######
 
-setwd("/Users/melissacronin/Desktop/IHH/IHH_country_criteria_prioritization")
 crit_2_1_A_data<- read.csv("landed_value_sum_IHH.csv", sep=",", header=TRUE) %>%  #this comes from "Global_SSF_LV" from IHH core datasets
- # filter(country_ISO_alpha3!="CHN") %>% 
   mutate(global_landed_value=sum(landed_value)) %>% 
   mutate(crit_2_1_A_raw=landed_value/global_landed_value) %>% 
   mutate(crit_2_1_A_log =log(crit_2_1_A_raw+1)/global_landed_value) %>% 
@@ -483,9 +425,9 @@ ggplot(crit_2_1_A_data) +
 
 ### 2_1_B Contribution to SSF global marine fisheries employment (% of global marine SSF employment, IHH) ######
 #Description: Percent contribution of number of fishers by country to global employment in fisheries
+employment_data<- read.csv("https://raw.githubusercontent.com/melissarcronin/SSF-LSF-interactions/refs/heads/main/SSF-LSF_interactions/data/ihh_employment_data.csv?token=GHSAT0AAAAAADL5PYY6OXJJF277YI34DFUI2HFODCA")
 
-setwd("/Users/melissacronin/Desktop/IHH/IHH_country_criteria_prioritization")
-crit_2_1_B_data<-read.csv("ihh_employment_data.csv", sep=",", header=T) %>% 
+crit_2_1_B_data<-employment_data %>% 
   dplyr::select(country,country_ISO_alpha3 ,   harvest_marine_SSF, harvest_marine_LSF) %>% 
   mutate(fishers= harvest_marine_LSF+ harvest_marine_SSF) %>% 
   mutate(global_fishers=sum(fishers)) %>% 
@@ -506,14 +448,15 @@ ggplot(crit_2_1_B_data) +
 
 ### 2_1_C Contribution of marine SSF employment in fisheries to total employment (% of country’s labor force, IHH)####
 #Percent contribution of marine SSF fishers to total country labour force 
-setwd("/Users/melissacronin/Desktop/IHH/IHH_country_criteria_prioritization")
-ssf_employment<-read.csv("ihh_employment_data.csv", sep=",", header=T) %>% 
+
+ssf_employment<-employment_data %>% 
   dplyr::select(country,country_ISO_alpha3 ,   harvest_marine_SSF)
 
 ssf_employment$harvest_marine_SSF<-as.numeric(ssf_employment$harvest_marine_SSF)
 
-setwd("/Users/melissacronin/Desktop/IHH/IHH_country_criteria_prioritization/world_bank_labor")
-global_employment<-read.csv("world_bank_employment_data.csv", sep=",", header=T) %>% 
+labor_data<- read.csv("https://raw.githubusercontent.com/melissarcronin/SSF-LSF-interactions/refs/heads/main/SSF-LSF_interactions/data/world_bank_employment_data.csv?token=GHSAT0AAAAAADL5PYY6DEPDNK23IZCEQJHW2HFOEZA")
+
+global_employment<- labor_data %>% 
   mutate(employment_mean_raw=rowMeans(dplyr::select(., X2013: X2017) )) %>% 
   mutate(employment_log=log(employment_mean_raw)) %>% 
   filter(employment_log!=0) %>% 
@@ -542,9 +485,8 @@ shapiro.test(crit_2_1_C_data$crit_2_1_C)
 
 ### 2_1_D Contribution to marine subsistence employment (work for own consumption) (% of global subsistence workers, IHH) #####
 #Percent contribution of number of marine subsistence fishers by country to global marine subsistence fishers
-setwd("/Users/melissacronin/Desktop/IHH/IHH_country_criteria_prioritization")
 
-crit_2_1_D_data<-read.csv("ihh_employment_data.csv", sep=",", header=T) %>% 
+crit_2_1_D_data<-employment_data%>% 
   dplyr::select(country,country_ISO_alpha3 ,   Marine_harvest_WOC_SSF ) %>% 
   mutate(subsistence_fishers= Marine_harvest_WOC_SSF) %>% 
   drop_na(subsistence_fishers) %>% 
@@ -561,7 +503,7 @@ ggplot(crit_2_1_D_data) +
   geom_histogram( aes(x = crit_2_1_D))
 
 shapiro.test(crit_2_1_D_data$crit_2_1_D)
-#normal
+
 
 ## Aggregate 2_1 variables and impute missing data with continental averages ######
 
