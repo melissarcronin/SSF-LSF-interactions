@@ -30,14 +30,14 @@ rm(list = ls())  # Clear environment to avoid conflicts
 # --- 2. Install and Load Packages -------------------------------------------
 required_packages <- c("here",
   # Data manipulation
-  "dplyr", "tidyr", "forcats", "countrycode",
+  "dplyr", "tidyr", "forcats", "countrycode","stringr",
   
   # Visualization
   "ggplot2", "viridis", "ggrepel", "scico", "patchwork", "cowplot",
   
   # Mapping
   "sf", "rnaturalearth", "rnaturalearthdata", "cartogram", 
-  "raster", "rgeos", "maps",
+  "raster",  "maps",
   
   # Tables and summaries
   "table1", "ggpubr",
@@ -68,14 +68,19 @@ color_scale <- scale_fill_viridis_c(
   na.value = "gray",
   limits = color_range
 )
+
+
 ###############################################################################
+
 # COMPONENT 1. EXPOSURE ########
 ###############################################################################
 
-## 1_1 Construct composite index of intensity of nearshore large-scale fishing activity 3####
+### 1_1 Construct composite index of intensity of nearshore large-scale fishing activity 3####
 
 # 1. Read CSV 
-gfw_data <- read.csv("https://raw.githubusercontent.com/melissarcronin/SSF-LSF-interactions/refs/heads/main/SSF-LSF_interactions/data/gfw_fishing_SAR_matched.csv?token=GHSAT0AAAAAADL5PYY6F5ONP3R3WHXB6PB42HFNXTA") %>%  filter(country_name!="") %>% #remove eez null fishing
+gfw_data <- read.csv(
+  here("data", "gfw_fishing_SAR_matched.csv")) %>%  
+  filter(country_name!="") %>% #remove eez null fishing
   dplyr::select(country_name, matched_fishing, unmatched_fishing)
 
 #1_1_B Ratio of undetected fishing to detected fishing
@@ -102,7 +107,7 @@ crit_1_1_A_data %>%
   geom_histogram(aes(x=crit_1_1_A))
 
 
-#######
+
 #create crit_1_1_B : Non-matched (eg non-broadcasting) LSF density vessel detections
 crit_1_1_B_data <- gfw_data %>%
   mutate(Alpha.3.code = if_else(country_name %in% names(countries_subset), 
@@ -125,7 +130,7 @@ crit_1_1_data<- crit_1_1_A_data %>%
   mutate(crit_1_1 = rowMeans(dplyr::select(.,crit_1_1_A, crit_1_1_B) )) 
   
 
-crit_1_1_data %>% 
+crit_1_1_histogram<-crit_1_1_data %>% 
   ggplot()+
   geom_histogram(aes(x=crit_1_1))
 
@@ -133,7 +138,7 @@ shapiro.test(crit_1_1_data$crit_1_1)
 
 cor(crit_1_1_data$crit_1_1_A_raw,crit_1_1_data$crit_1_1_B_raw, ) #check correlation between LSF variables
 
-##1_2_A Contribution to global marine SSF production (scaled to nearshore area , IHH) #####
+### 1_2_A Contribution to global marine SSF production (scaled to nearshore area , IHH) #####
 #Description: Percent contribution of countries’ small-scale fisheries production to global small-scale fisheries production
 
 #first, need a calculation of square km of area within 25km for every country, using a buffer created in GIS
@@ -290,7 +295,7 @@ crit_1_2_data<- ssf_catch_area %>%
   filter(crit_1_2!="NA")
 
 # Plot a histogram of normalized_crit_2_1_A
-ggplot(crit_1_2_data) +
+crit_1_2_histogram<-ggplot(crit_1_2_data) +
   geom_histogram(aes(x = crit_1_2)) 
 
 crit_1_2_df<- crit_1_2_data %>% 
@@ -299,7 +304,7 @@ crit_1_2_df<- crit_1_2_data %>%
 
 shapiro.test(crit_1_2_df$crit_1_2)
 
-##### Compile exposure variables #####
+### Aggregate exposure variables #####
 
 ### CALCULATE EXPOSURE ######
 
@@ -403,14 +408,22 @@ exposure_means<-ggplot(reshaped_exposure_data, aes(x = variable, y = mean)) +
 exposure_means
 
 
-# INDEX 2. SENSITIVITY ######
-###########################
+##################################################################################
 
-## 2_1 Composite index of employment and economic dependence on the small-scale fisheries sector ####
+
+#################################################################################
+# COMPONENT 2. SENSITIVITY ######
+#################################################################################
+
+
+### 2_1 Composite index of employment and economic dependence on the small-scale fisheries sector ####
 
 ### 2_1_A Contribution to SSF marine fisheries landed value (% of global marine SSF landed value, IHH) ######
+landed_value_data<-read.csv(
+  here("data", "landed_value_ssf.csv"),
+  stringsAsFactors = FALSE)
 
-crit_2_1_A_data<- read.csv("landed_value_sum_IHH.csv", sep=",", header=TRUE) %>%  #this comes from "Global_SSF_LV" from IHH core datasets
+crit_2_1_A_data<- landed_value_data %>%  #this comes from "Global_SSF_LV" from IHH core datasets
   mutate(global_landed_value=sum(landed_value)) %>% 
   mutate(crit_2_1_A_raw=landed_value/global_landed_value) %>% 
   mutate(crit_2_1_A_log =log(crit_2_1_A_raw+1)/global_landed_value) %>% 
@@ -418,14 +431,17 @@ crit_2_1_A_data<- read.csv("landed_value_sum_IHH.csv", sep=",", header=TRUE) %>%
 
 
 # plot
-ggplot(crit_2_1_A_data) +
+crit_2_1_A_histogram<-ggplot(crit_2_1_A_data) +
   geom_histogram( aes(x = crit_2_1_A))
 
 
 
 ### 2_1_B Contribution to SSF global marine fisheries employment (% of global marine SSF employment, IHH) ######
 #Description: Percent contribution of number of fishers by country to global employment in fisheries
-employment_data<- read.csv("https://raw.githubusercontent.com/melissarcronin/SSF-LSF-interactions/refs/heads/main/SSF-LSF_interactions/data/ihh_employment_data.csv?token=GHSAT0AAAAAADL5PYY6OXJJF277YI34DFUI2HFODCA")
+employment_data<- read.csv(  
+  here("data", "employment_ssf.csv"),
+  stringsAsFactors = FALSE)
+
 
 crit_2_1_B_data<-employment_data %>% 
   dplyr::select(country,country_ISO_alpha3 ,   harvest_marine_SSF, harvest_marine_LSF) %>% 
@@ -439,11 +455,8 @@ crit_2_1_B_data<-employment_data %>%
 
 
 # plot
-ggplot(crit_2_1_B_data) +
+crit_2_1_B_histogram<-ggplot(crit_2_1_B_data) +
   geom_histogram( aes(x = crit_2_1_B))
-
-####
-
 
 
 ### 2_1_C Contribution of marine SSF employment in fisheries to total employment (% of country’s labor force, IHH)####
@@ -454,17 +467,15 @@ ssf_employment<-employment_data %>%
 
 ssf_employment$harvest_marine_SSF<-as.numeric(ssf_employment$harvest_marine_SSF)
 
-labor_data<- read.csv("https://raw.githubusercontent.com/melissarcronin/SSF-LSF-interactions/refs/heads/main/SSF-LSF_interactions/data/world_bank_employment_data.csv?token=GHSAT0AAAAAADL5PYY6DEPDNK23IZCEQJHW2HFOEZA")
+labor_data<- read.csv( 
+  here("data", "world_bank_employment_data.csv"),
+  stringsAsFactors = FALSE)
 
 global_employment<- labor_data %>% 
   mutate(employment_mean_raw=rowMeans(dplyr::select(., X2013: X2017) )) %>% 
   mutate(employment_log=log(employment_mean_raw)) %>% 
   filter(employment_log!=0) %>% 
   dplyr::select(country, employment_mean_raw, employment_log) 
-
-# plot
-ggplot(global_employment) +
-  geom_histogram( aes(x = employment_log))
 
 crit_2_1_C_data<- ssf_employment %>% 
   left_join(global_employment, by="country") %>% 
@@ -477,7 +488,7 @@ crit_2_1_C_data<- ssf_employment %>%
   filter(crit_2_1_C!=0)
 
 # plot
-ggplot(crit_2_1_C_data) +
+crit_2_1_C_histogram<-ggplot(crit_2_1_C_data) +
   geom_histogram( aes(x = crit_2_1_C))
 
 shapiro.test(crit_2_1_C_data$crit_2_1_C)
@@ -499,102 +510,51 @@ crit_2_1_D_data<-employment_data%>%
 
 
 # plot
-ggplot(crit_2_1_D_data) +
+crit_2_1_D_histogram<-ggplot(crit_2_1_D_data) +
   geom_histogram( aes(x = crit_2_1_D))
 
 shapiro.test(crit_2_1_D_data$crit_2_1_D)
 
 
-## Aggregate 2_1 variables and impute missing data with continental averages ######
+### Aggregate 2_1 variables ######
 
 #Compile 2_1 employment data 
-crit_2_1_data_continent <-crit_2_1_A_data %>% 
+crit_2_1_data <-crit_2_1_A_data %>% 
   left_join(crit_2_1_B_data, by =c( "country_ISO_alpha3")) %>% 
   left_join(crit_2_1_C_data, by =c( "country_ISO_alpha3")) %>% 
   left_join(crit_2_1_D_data, by =c( "country_ISO_alpha3")) %>% 
+  mutate(Subregion = countrycode(
+    country_ISO_alpha3, 
+    origin = "iso3c", 
+    destination = "un.regionsub.name"), #assign region for imputing later
+    Subregion = ifelse(country_ISO_alpha3 == "TWN", "Eastern Asia", Subregion)
+  ) %>%
   mutate(Continent = countrycode(
     country_ISO_alpha3, 
     origin = "iso3c", 
-    destination = "continent"
-  ))  %>% 
-  dplyr::select(country_ISO_alpha3, Continent,
+    destination = "continent") #assign region for imputing later
+  ) %>%
+  dplyr::select(country_ISO_alpha3, Subregion,Continent,
                 
-                crit_2_1_A_raw,
-                crit_2_1_B_raw,
-                crit_2_1_C_raw, 
-                crit_2_1_D_raw,
-                
+                # crit_2_1_A_raw,
+                # crit_2_1_B_raw,
+                # crit_2_1_C_raw, 
+                #  crit_2_1_D_raw) %>% 
+
                 crit_2_1_A,
                 crit_2_1_B,
-                crit_2_1_C, 
-                crit_2_1_D )
-
-
-# Calculate the continent-wise averages for crit_2_1_sum
-crit_2_1_continent_avg_subindices <- crit_2_1_data_continent %>%
-  group_by(Continent) %>%
-  summarize(
-    #raw values 
-    continent_mean_2_1_A_raw = mean(crit_2_1_A_raw, na.rm = TRUE),
-    continent_mean_2_1_B_raw = mean(crit_2_1_B_raw, na.rm = TRUE),
-    continent_mean_2_1_C_raw = mean(crit_2_1_C_raw, na.rm = TRUE),
-    continent_mean_2_1_D_raw = mean(crit_2_1_D_raw, na.rm = TRUE),
-    
-    #logged and/or scaled values
-    continent_mean_2_1_A = mean(crit_2_1_A, na.rm = TRUE),
-    continent_mean_2_1_B = mean(crit_2_1_B, na.rm = TRUE),
-    continent_mean_2_1_C = mean(crit_2_1_C, na.rm = TRUE),
-    continent_mean_2_1_D = mean(crit_2_1_D, na.rm = TRUE)
-  )
-
-#there are no subsistence employment values for Europe. We assume subsistence for Europe is 0. 
-crit_2_1_continent_avg_subindices$continent_mean_2_1_D_raw[crit_2_1_continent_avg_subindices$Continent == "Europe"] <- 0
-crit_2_1_continent_avg_subindices$continent_mean_2_1_D[crit_2_1_continent_avg_subindices$Continent == "Europe"] <- 0
+                crit_2_1_C,
+                crit_2_1_D ) %>%
+  filter(rowSums(across(c(crit_2_1_A, crit_2_1_B, crit_2_1_C, crit_2_1_D), ~ is.na(.))) <= 2) #remove countries missing more than 2 data points
 
 
 
-# Merge the continent averages back into the data and impute missing values
-crit_2_1_data_big <- crit_2_1_data_continent %>%
-  left_join(crit_2_1_continent_avg_subindices, by = "Continent") %>%
-  mutate( #raw values
-    crit_2_1_A_raw = ifelse(is.na(crit_2_1_A_raw), continent_mean_2_1_A_raw, crit_2_1_A_raw),
-    crit_2_1_B_raw = ifelse(is.na(crit_2_1_B_raw), continent_mean_2_1_B_raw, crit_2_1_B_raw),
-    crit_2_1_C_raw = ifelse(is.na(crit_2_1_C_raw), continent_mean_2_1_C_raw, crit_2_1_C_raw),
-    crit_2_1_D_raw = ifelse(is.na(crit_2_1_D_raw), continent_mean_2_1_D_raw, crit_2_1_D_raw)
-  ) %>% 
-   mutate( #log and scaled values
-    crit_2_1_A = ifelse(is.na(crit_2_1_A), continent_mean_2_1_A, crit_2_1_A),
-    crit_2_1_B = ifelse(is.na(crit_2_1_B), continent_mean_2_1_B, crit_2_1_B),
-    crit_2_1_C = ifelse(is.na(crit_2_1_C), continent_mean_2_1_C, crit_2_1_C),
-    crit_2_1_D = ifelse(is.na(crit_2_1_D), continent_mean_2_1_D, crit_2_1_D)
-  ) 
-
-crit_2_1_data<- crit_2_1_data_big %>% 
-  mutate(crit_2_1_raw = scales::rescale(rowMeans(dplyr::select(., 
-                                                           crit_2_1_A_raw,
-                                                           crit_2_1_B_raw,
-                                                           crit_2_1_C_raw, 
-                                                           crit_2_1_D_raw    ), na.rm = TRUE))) %>% 
-  mutate(crit_2_1 = scales::rescale(rowMeans(dplyr::select(., 
-                                                           crit_2_1_A,
-                                                           crit_2_1_B,
-                                                           crit_2_1_C, 
-                                                           crit_2_1_D    ), na.rm = TRUE))) %>% 
-  filter(crit_2_1!="-Inf")
-
-# plot
-ggplot(crit_2_1_data) +
-  geom_histogram( aes(x = crit_2_1))
-
-shapiro.test(crit_2_1_data$crit_2_1)
-#data is normally distributed
-
-
-## 2_2 Composite index of coastal nutritional dependence on SSFs ######
+### 2_2 Composite index of coastal nutritional dependence on SSFs ######
 ### 2_2_A Contribution to marine SSF production within country (kg/  coastal cap /yr, IHH) [for coastal population within 100 km]####
 
-setwd("/Users/melissacronin/Desktop/coastal_proportion")
-coastal_population<- read.csv("coastal_pop_2010.csv", sep="," ,header=T)# %>%   filter(country_ISO_alpha3!="CHN") 
+coastal_population<-read.csv( 
+  here("data", "coastal_population.csv"),
+  stringsAsFactors = FALSE)
 
 crit_2_2_A_data<- ssf_catch %>% 
   dplyr::left_join(coastal_population, by = c("country_ISO_alpha3") ) %>% 
@@ -602,215 +562,96 @@ crit_2_2_A_data<- ssf_catch %>%
   mutate(ssf_catch_kg = national_catch_final * 1000) %>% 
   mutate(crit_2_2_A_raw= ssf_catch_kg/coastal_population ) %>% 
   mutate(crit_2_2_A_log= log(ssf_catch_kg)/log(coastal_population )) %>% 
- # filter(log_crit_2_2_A!="Inf" ) %>% 
   mutate(crit_2_2_A = scales::rescale(crit_2_2_A_log) ) 
 
 # plot
-ggplot(crit_2_2_A_data) +
+crit_2_2_A_histogram<-ggplot(crit_2_2_A_data) +
   geom_histogram( aes(x =crit_2_2_A))
 
 #2.2_B Quality: Nutrient supply of catch (iron, zinc, calcium, vitamin A) for coastal residents [compiled domestic proportions that would meet 25% RDI for coastal population]
 
-setwd("/Users/melissacronin/Desktop/IHH/IHH_country_criteria_prioritization/ihh_nutrition_data")
-nutrition_data<- read.csv("nutrition_data_old.csv", sep=",", header=T) %>% 
-  filter(Inland_Marine=="Marine") %>% 
-  mutate(country_ISO_alpha3 = countrycode(sourcevar = Country, origin = "country.name", destination = "iso3c")) 
+nutrition_data <-read.csv( 
+  here("data", "coastal_population.csv"),
+  stringsAsFactors = FALSE)
+
+
+nutrition_data<-  read.csv( 
+    here("data", "nutrition_data.csv"),
+    stringsAsFactors = FALSE) %>% 
+  filter(marine_inland_char=="marine") %>% 
+  mutate(Continent = countrycode(
+    sourcevar = country,
+    origin = "iso3c",
+    destination = "continent"
+  )) %>% 
+  dplyr::rename(country_ISO_alpha3 = country)
+
 
 crit_2_2_B_data<- nutrition_data %>% 
   dplyr::left_join(coastal_population, by = c("country_ISO_alpha3") ) %>% 
-  mutate(crit_2_2_B_raw= Compiled_domestic_portions/coastal_population ) %>% 
+  mutate(crit_2_2_B_raw= pop/coastal_population ) %>% 
   filter(crit_2_2_B_raw!="Inf") %>% 
   mutate(crit_2_2_B_log = log(crit_2_2_B_raw+1) ) %>%  
   mutate(crit_2_2_B = scales::rescale(crit_2_2_B_log) )
 
 
 # plot
-ggplot(crit_2_2_B_data) +
+crit_2_2_B_histogram<-ggplot(crit_2_2_B_data) +
   geom_histogram( aes(x =crit_2_2_B_raw))
 
 shapiro.test(crit_2_2_B_data$crit_2_2_B)
 
 
 
-### 2_2_C WHO undernourishment indicator (share of population with insufficient caloric intake) ######
-#Description: Prevalence of undernourishments is the percentage of the population whose habitual food consumption is insufficient to provide the dietary energy levels that are required to maintain a normal active and healthy life. Data showing as 2.5 may signify a prevalence of undernourishment below 2.5%.
-#so higher undernourishment score = more need
-# setwd("/Users/melissacronin/Desktop/IHH/IHH_country_criteria_prioritization/undernourishment_data")
-# undernourishment<- read.csv("undernourishment_data.csv", sep=",", header=T)# %>%   filter(X2013!="..") %>%  filter(country!="China")
-# 
-# # Convert selected columns to numeric
-# year_columns <- colnames(undernourishment)[grepl("^X201[3-7]$", colnames(undernourishment))]
-# undernourishment[year_columns] <- lapply(undernourishment[year_columns], as.numeric)
-# library(MASS)
-#  
-# crit_2_2_C_data_raw <- undernourishment %>%
-#   rowwise() %>%
-#   mutate(undernourishment_mean = mean(c_across(year_columns)/100, na.rm = TRUE)) %>%
-#   ungroup() %>%  mutate(Continent = countrycode(
-#     country_ISO_alpha3, 
-#     origin = "iso3c", 
-#     destination = "continent"
-#   )) %>% filter(Continent!="NA") %>% 
-#   filter(
-#     !rowSums(is.na(.)) > 3  # Keep countries with 2 or fewer missing values
-#   ) 
-# 
-# crit_2_2_C_continent_data<- crit_2_2_C_data_raw %>% 
-#   group_by(Continent) %>%
-#   summarize(
-#     continent_mean = mean(undernourishment_mean, na.rm = TRUE)
-#   )
-# 
-# 
-# # Merge the continent averages back into the data and impute missing values
-# crit_2_2_C_data <- crit_2_2_C_data_raw %>%
-#   left_join(crit_2_2_C_continent_data, by = "Continent") %>%
-#   mutate(  crit_2_2_C_raw = ifelse(is.na(undernourishment_mean), continent_mean, undernourishment_mean) ) %>% #impute missing values
-#   mutate(crit_2_2_C_log = log( crit_2_2_C_raw +1)) %>% 
-#   mutate(crit_2_2_C = scales::rescale(crit_2_2_C_log))
-# 
-# 
-# # plot
-# ggplot(crit_2_2_C_data) +
-#   geom_histogram( aes(x = crit_2_2_C_raw))+
-#   geom_histogram( aes(x =crit_2_2_C), fill="transparent",color="pink")
-# 
-# shapiro.test(crit_2_2_C_data$crit_2_2_C)
-
-
-### 2_2_D Prevalence of inadequate micronutrient intake (PMII) for 14 micronutrients  ######
+### 2_2_C Prevalence of inadequate micronutrient intake (PMII) for 14 micronutrients  ######
 #Prevalence of inadequate micronutrient intake  (Beale et al 2017) 
-setwd("/Users/melissacronin/Desktop/IHH/IHH_country_criteria_prioritization")
-crit_2_2_D_data<-read.csv("prevalence_micronutrient_deficiency.csv", sep=",", header=T) %>% 
-  rename(country_ISO_alpha3=ISO3) %>% 
+
+crit_2_2_C_data<-read.csv( 
+  here("data", "prevalence_micronutrient_deficiency.csv"), stringsAsFactors = FALSE) %>% 
+                           rename(country_ISO_alpha3=ISO3) %>% 
   dplyr::select(country_ISO_alpha3 ,  PIMII.without.Fortification) %>% 
-  rename(crit_2_2_D_raw =PIMII.without.Fortification) %>% 
-  mutate(crit_2_2_D_log=log(crit_2_2_D_raw+1)) %>% 
- # filter(country_ISO_alpha3!="CHN") %>% 
-  mutate(crit_2_2_D = scales::rescale(crit_2_2_D_log) ) %>% 
-  mutate(Continent = countrycode(
-    country_ISO_alpha3, 
-    origin = "iso3c", 
-    destination = "continent"
-  )) 
+  rename(crit_2_2_C_raw =PIMII.without.Fortification) %>% 
+  mutate(crit_2_2_C_log=log(crit_2_2_C_raw+1)) %>% 
+  mutate(crit_2_2_C = scales::rescale(crit_2_2_C_log) ) 
 
 # plot
-ggplot(crit_2_2_D_data) +
-  geom_histogram( aes(x = crit_2_2_D))
+crit_2_2_C_historgram <-ggplot(crit_2_2_C_data) +
+  geom_histogram( aes(x = crit_2_2_C))
 
-shapiro.test(crit_2_2_D_data$crit_2_2_D)
+shapiro.test(crit_2_2_C_data$crit_2_2_C)
 
 
-## Aggregate 2_2 variables and impute missing data with continental averages ######
-
-crit_2_2_data_continent <-crit_2_2_A_data %>% 
+### Aggregate 2_2 variables ######
+crit_2_2_data <-crit_2_2_A_data %>%
   left_join(crit_2_2_B_data, by =c( "country_ISO_alpha3")) %>%
- # left_join(crit_2_2_C_data, by =c( "country_ISO_alpha3")) %>% 
-  left_join(crit_2_2_D_data, by =c( "country_ISO_alpha3")) %>% 
+  left_join(crit_2_2_C_data, by =c( "country_ISO_alpha3")) %>%
+  mutate(Subregion = countrycode(
+    country_ISO_alpha3, 
+    origin = "iso3c", 
+    destination = "un.regionsub.name"), #assign region for imputing later
+    Subregion = ifelse(country_ISO_alpha3 == "TWN", "Eastern Asia", Subregion)
+  ) %>%
   mutate(Continent = countrycode(
     country_ISO_alpha3, 
     origin = "iso3c", 
-    destination = "continent"
-  )) %>% 
-  dplyr::select(country_ISO_alpha3, Continent,
+    destination = "continent") #assign region for imputing later
+  ) %>%
+  dplyr::select(country_ISO_alpha3, Subregion,Continent,
                 crit_2_2_A_raw,
                 crit_2_2_B_raw,
-                #crit_2_2_C_raw,
-                crit_2_2_D_raw,
-                
+                crit_2_2_C_raw,
+
                 crit_2_2_A,
                 crit_2_2_B ,
-              #  crit_2_2_C,
-                crit_2_2_D) %>% 
+                crit_2_2_C) %>%
   filter(
-    !rowSums(is.na(.)) > 2  # Keep countries with 2 or fewer missing values
-  ) 
+    !rowSums(is.na(.)) > 2)  # Keep countries with 2 or fewer missing values
 
 
-
-# Calculate the continent-wise averages for crit_2_1_sum
-crit_2_2_continent_avg_subindices <- crit_2_2_data_continent %>%
-  group_by(Continent) %>%
-  summarize(
-    continent_mean_2_2_A_raw = mean(crit_2_2_A_raw, na.rm = TRUE),
-    continent_mean_2_2_B_raw = mean(crit_2_2_B_raw, na.rm = TRUE),
-  #  continent_mean_2_2_C_raw = mean(crit_2_2_C_raw, na.rm = TRUE),
-    continent_mean_2_2_D_raw = mean(crit_2_2_D_raw, na.rm = TRUE),
-    
-    continent_mean_2_2_A = mean(crit_2_2_A, na.rm = TRUE),
-    continent_mean_2_2_B = mean(crit_2_2_B, na.rm = TRUE),
-   # continent_mean_2_2_C = mean(crit_2_2_C, na.rm = TRUE),
-    continent_mean_2_2_D = mean(crit_2_2_D, na.rm = TRUE)
-  )
-
-
-# Merge the continent averages back into the data and impute missing values
-crit_2_2_data_big <- crit_2_2_data_continent %>%
-  left_join(crit_2_2_continent_avg_subindices, by = "Continent") %>%
-  mutate(
-    crit_2_2_A_raw = ifelse(is.na(crit_2_2_A_raw), continent_mean_2_2_A_raw , crit_2_2_A_raw ),
-    crit_2_2_B_raw  = ifelse(is.na(crit_2_2_B_raw ), continent_mean_2_2_B_raw , crit_2_2_B_raw ),
-    #crit_2_2_C_raw  = ifelse(is.na(crit_2_2_C_raw ), continent_mean_2_2_C_raw , crit_2_2_C_raw ),
-    crit_2_2_D_raw  = ifelse(is.na(crit_2_2_D_raw ), continent_mean_2_2_D_raw , crit_2_2_D_raw ),
-    
-    crit_2_2_A = ifelse(is.na(crit_2_2_A), continent_mean_2_2_A, crit_2_2_A),
-    crit_2_2_B = ifelse(is.na(crit_2_2_B), continent_mean_2_2_B, crit_2_2_B),
-   # crit_2_2_C = ifelse(is.na(crit_2_2_C), continent_mean_2_2_C, crit_2_2_C),
-    crit_2_2_D = ifelse(is.na(crit_2_2_D), continent_mean_2_2_D, crit_2_2_D)
-  ) 
-
-
-crit_2_2_data <-crit_2_2_data_big %>% 
-   mutate(crit_2_2_raw = rowSums(dplyr::select(., 
-                                                           crit_2_2_A_raw,
-                                                           crit_2_2_B_raw ,
-                                                          # crit_2_2_C_raw,
-                                                           crit_2_2_D_raw), na.rm = TRUE)) %>% 
-  mutate(crit_2_2_original = rowSums(dplyr::select(., 
-                                                           crit_2_2_A,
-                                                           crit_2_2_B ,
-                                                         #  crit_2_2_C,
-                                                           crit_2_2_D), na.rm = TRUE)) %>% 
- # mutate(crit_2_2_log=log( crit_2_2_original)) %>% 
-  mutate( crit_2_2= scales::rescale(crit_2_2_original)) %>% 
-  dplyr::select(
-    crit_2_2_original,
-     country_ISO_alpha3,
-    crit_2_2_raw,
-    crit_2_2_A_raw,
-    crit_2_2_B_raw,
-   # crit_2_2_C_raw,
-    crit_2_2_D_raw,
-    
-     crit_2_2,
-    crit_2_2_A,
-    crit_2_2_B,
-    #crit_2_2_C,
-    crit_2_2_D )
-
-
-# plot
-ggplot(crit_2_2_data) +
-  geom_histogram( aes(x = crit_2_2))
-
-shapiro.test(crit_2_2_data$crit_2_2)
-
-
-### CALCULATE SENSITIVYTY INDEX #####
+### CALCULATE SENSITIVYTY INDEX (before imputation, see below). We don't impute here because we want to have all the other data for possible countries based on data availability for exposure and adaptive capacity #####
 sensitivity_data<- crit_2_1_data %>% 
-  left_join(crit_2_2_data, by =c( "country_ISO_alpha3"))  %>% 
-  mutate(sensitivity_raw = rowMeans(dplyr::select(., 
-                                              crit_2_1_raw,
-                                              crit_2_2_raw
-  ), na.rm = TRUE)) %>% 
-  mutate(sensitivity = rowMeans(dplyr::select(., 
-                                              crit_2_1,
-                                              crit_2_2
-  ), na.rm = TRUE))  %>% 
-  dplyr::select(country_ISO_alpha3, 
-                crit_2_1_raw,
-                crit_2_2_raw,
-                sensitivity_raw,
+  left_join(crit_2_2_data, by =c( "country_ISO_alpha3", "Continent", "Subregion"))  %>% 
+  dplyr::select(country_ISO_alpha3, Continent, Subregion,
                 
                 crit_2_1_A_raw,
                 crit_2_1_B_raw,
@@ -819,12 +660,7 @@ sensitivity_data<- crit_2_1_data %>%
                 
                 crit_2_2_A_raw,
                 crit_2_2_B_raw,
-              #  crit_2_2_C_raw,
-                crit_2_2_D_raw,
-                
-                crit_2_1,
-                crit_2_2,
-                sensitivity,
+                crit_2_2_C_raw,
                 
                 crit_2_1_A,
                 crit_2_1_B,
@@ -833,60 +669,57 @@ sensitivity_data<- crit_2_1_data %>%
                 
                 crit_2_2_A,
                 crit_2_2_B,
-               # crit_2_2_C,
-                crit_2_2_D
+                crit_2_2_C
                 )
 
-ggplot(sensitivity_data) +
-  geom_histogram( aes(x = sensitivity))
 
-shapiro.test(sensitivity_data$sensitivity)
-#normal
-
-reshaped_data <- sensitivity_data %>%
-  gather(key = "variable", value = "value", -country_ISO_alpha3) %>%
-  group_by(variable) %>%
-  summarise(mean = mean(value, na.rm = TRUE), sd = sd(value, na.rm = TRUE))
-
-sensitivity_means<- ggplot(reshaped_data, aes(x = variable, y = mean)) +
- # geom_boxplot(position = position_dodge(0.8), alpha = 0.5, width = 0.6) +
-  geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd), width = 0.2, position = position_dodge(0.8)) +
-  theme_classic() +
-  labs(title="Sensitivity")+
-  scale_y_continuous(limits=c(-.1, 1))+
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
-
-sensitivity_means
+# reshaped_data <- sensitivity_data %>%
+#   gather(key = "variable", value = "value", -country_ISO_alpha3) %>%
+#   group_by(variable) %>%
+#   summarise(mean = mean(value, na.rm = TRUE), sd = sd(value, na.rm = TRUE))
+# 
+# sensitivity_means<- ggplot(reshaped_data, aes(x = variable, y = mean)) +
+#   geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd), width = 0.2, position = position_dodge(0.8)) +
+#   theme_classic() +
+#   labs(title="Sensitivity")+
+#   scale_y_continuous(limits=c(-.1, 1))+
+#   theme(axis.text.x = element_text(angle = 45, hjust = 1))
+# 
+# sensitivity_means #without imputation
 
 
 
-# INDEX 3. ADAPTIVE CAPACITY ###########################
+###############################################################################
 
-## 3_1 HDI ####
-setwd("/Users/melissacronin/Desktop/IHH/IHH_country_criteria_prioritization")
-hdi<-read.csv("hdi_time_series.csv", sep=",", header=T) %>% 
-#  filter(country!="China") %>% 
+#################################################################################
+# COMPONENT 3. ADAPTIVE CAPACITY 
+#################################################################################
+
+### 3_1 HDI ####
+
+hdi<-read.csv( 
+  here("data", "hdi_time_series.csv"),
+  stringsAsFactors = FALSE) %>% 
   dplyr::select(country_ISO_alpha3, country,
                 hdi_2013, hdi_2014, hdi_2015, hdi_2017, hdi_2017)
 
 crit_3_1_data<-hdi %>% 
   dplyr::mutate(crit_3_1_raw= rowMeans(dplyr::select(., hdi_2013:hdi_2017) ))  %>%
   filter(!is.na(crit_3_1_raw)) %>% 
-  mutate(crit_3_1= scales::rescale(crit_3_1_raw)) 
-#Crit 3_1 does not need to be normalized. it is already normal
+  mutate(crit_3_1= scales::rescale(crit_3_1_raw)) #Crit 3_1 does not need to be normalized
 
-# Plot the Crit 3_1
-ggplot(crit_3_1_data) +
+crit_3_1_histogram<- ggplot(crit_3_1_data) +
   geom_histogram(aes(x = crit_3_1_raw), na.rm = TRUE)
 
 shapiro.test(crit_3_1_data$crit_3_1)
 
 
-## crit 3_2 Governance ########
+### 3_2 Development and governance ########
 #Political Stability and Absence of Violence Estimate, Government Effectiveness Estimate, Regulatory Quality Estimate, Rule of law , Voice and accountability
-setwd("/Users/melissacronin/Desktop/IHH/IHH_country_criteria_prioritization/governance_data")
-governance<-read.csv("governance_data.csv", header=T, sep=",") %>% 
-#  filter(country_ISO_alpha3!="CHN") %>% 
+
+governance<-read.csv( 
+  here("data", "governance_data.csv"),
+  stringsAsFactors = FALSE) %>% 
   filter(country_ISO_alpha3!="") %>% 
   dplyr::select(country_ISO_alpha3, corruption, gov_effectiveness, political_stability, regulatory_quality, rule_of_law, voice_accountability) %>% 
   mutate_at(vars(corruption, gov_effectiveness, political_stability, regulatory_quality, rule_of_law, voice_accountability),
@@ -913,11 +746,11 @@ crit_3_2_data<- governance %>%
   dplyr::mutate(crit_3_2 = rowMeans(dplyr::select(., crit_3_2_A:crit_3_2_F), na.rm = TRUE ))  
 
 #plot
-ggplot(crit_3_2_data) +
+crit_3_2_histogram<-ggplot(crit_3_2_data) +
   geom_histogram(aes(x = crit_3_2_raw), na.rm = TRUE)
 
 shapiro.test(crit_3_2_data$crit_3_2)
-#just barely normal
+
 
 
 ### CALCULATE ADAPTIVE CAPACITY #####
@@ -962,7 +795,6 @@ reshaped_adaptive_capacity_data <- adaptive_capacity_data %>%
 
 
 adaptive_capacity_means<- ggplot(reshaped_adaptive_capacity_data, aes(x = variable, y = mean)) +
-  #geom_boxplot(position = position_dodge(0.8), alpha = 0.5, width = 0.6) +
   geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd), width = 0.2, position = position_dodge(0.8)) +
   theme_classic() +
   labs(title="Adaptive Capacity")+
@@ -971,9 +803,84 @@ adaptive_capacity_means<- ggplot(reshaped_adaptive_capacity_data, aes(x = variab
 
 
 
-exposure_means + sensitivity_means + adaptive_capacity_means
+#exposure_means + sensitivity_means + adaptive_capacity_means
 
-ggsave("subindex_means.tiff", dpi=300, width=10, height=5)
+#ggsave("subindex_means.tiff", dpi=300, width=10, height=5)
+
+
+#################################################################################
+
+#################################################################################
+# IMPUTE MISSING VALUES
+#################################################################################
+
+#sensitivity values are missing for some countries, so going to recalculate with continental averages. 
+
+# Calculate the continent-wise averages for crit_2_1_sum
+crit_2_1_region_avg <- crit_2_1_data %>%
+  group_by(Continent) %>%
+  summarize( 
+    mean_2_1_A = mean(crit_2_1_A, na.rm = TRUE),
+    mean_2_1_B = mean(crit_2_1_B, na.rm = TRUE),
+    mean_2_1_C = mean(crit_2_1_C, na.rm = TRUE),
+    mean_2_1_D = mean(crit_2_1_D, na.rm = TRUE)
+  ) %>%
+     mutate( mean_2_1_D = ifelse(Continent == "Europe", 0, mean_2_1_D)) #no subsistence data for Europe, we assume near 0.
+
+
+# Merge the continent averages back into the data and impute missing values
+crit_2_1_data_complete <- crit_2_1_data  %>%
+  left_join(crit_2_1_region_avg , by = c("Continent")) %>%
+   mutate(
+    crit_2_1_A = ifelse(is.na(crit_2_1_A), mean_2_1_A, crit_2_1_A),
+    crit_2_1_B = ifelse(is.na(crit_2_1_B), mean_2_1_B, crit_2_1_B),
+    crit_2_1_C = ifelse(is.na(crit_2_1_C), mean_2_1_C, crit_2_1_C),
+    crit_2_1_D = ifelse(is.na(crit_2_1_D), mean_2_1_D, crit_2_1_D)
+  )
+
+
+crit_2_1_data<- crit_2_1_data_complete %>%
+  mutate(crit_2_1 = scales::rescale(rowMeans(dplyr::select(.,
+                                                           crit_2_1_A,
+                                                           crit_2_1_B,
+                                                           crit_2_1_C,
+                                                           crit_2_1_D    ), na.rm = TRUE))) %>%
+  filter(crit_2_1!="-Inf")
+
+
+# Calculate the continent-wise averages for crit_2_1
+crit_2_2_region_avg <- crit_2_2_data%>%
+  group_by(Continent) %>%
+  summarize(
+    mean_2_2_A = mean(crit_2_2_A, na.rm = TRUE),
+    mean_2_2_B = mean(crit_2_2_B, na.rm = TRUE),
+   mean_2_2_C = mean(crit_2_2_C, na.rm = TRUE)
+  )
+
+# # Merge the continent averages back into the data and impute missing values
+crit_2_2_data_complete <- crit_2_2_data %>%
+  left_join(crit_2_2_region_avg, by = "Continent") %>%
+  mutate(
+    crit_2_2_A = ifelse(is.na(crit_2_2_A), mean_2_2_A, crit_2_2_A),
+    crit_2_2_B = ifelse(is.na(crit_2_2_B), mean_2_2_B, crit_2_2_B),
+    crit_2_2_C = ifelse(is.na(crit_2_2_C), mean_2_2_C, crit_2_2_C)
+  )
+
+#
+crit_2_2_data <-crit_2_2_data_complete %>%
+  mutate(crit_2_2 = rowMeans(dplyr::select(.,
+                                                           crit_2_2_A,
+                                                           crit_2_2_B ,
+                                                           crit_2_2_C), na.rm = TRUE)) %>%
+  mutate( crit_2_2= scales::rescale(crit_2_2))
+
+sensitivity_data <- crit_2_1_data %>%
+  inner_join(crit_2_2_data,by = c("country_ISO_alpha3", "Continent", "Subregion")) %>%
+  mutate(
+    sensitivity = rowMeans(dplyr::select(., crit_2_1, crit_2_2), na.rm = TRUE)
+  )
+
+
 
 
 ######## MERGE 3 INDICES  ###########################
@@ -981,7 +888,7 @@ ggsave("subindex_means.tiff", dpi=300, width=10, height=5)
 exposure_data_df<- exposure_data_df %>%  rename(country_ISO_alpha3= Alpha.3.code)
 
 
-all_indices <- exposure_data_df %>% 
+all_components <- exposure_data_df %>% 
   left_join(sensitivity_data, by =c( "country_ISO_alpha3")) %>% 
   left_join(adaptive_capacity_data, by =c( "country_ISO_alpha3")) %>% 
   mutate(Continent = countrycode(
@@ -989,79 +896,17 @@ all_indices <- exposure_data_df %>%
     origin = "iso3c", 
     destination = "continent"
   )) %>% 
-  mutate_all(~ifelse(is.nan(.), NA, .)) #remove a couple NaNs and replace with NA
-
-#sensitivity values are missing for some countries, so going to recalculate with continental averages. 
-
-all_imputed<- all_indices %>% 
-    left_join(crit_2_2_continent_avg_subindices, by = "Continent") %>% 
-    left_join(crit_2_1_continent_avg_subindices, by = "Continent") 
-
-all_imputed$crit_2_1_A_raw <- ifelse(is.na(all_imputed$crit_2_1_A_raw), all_imputed$continent_mean_2_1_A_raw , all_imputed$crit_2_1_A_raw )
-all_imputed$crit_2_1_B_raw  <- ifelse(is.na(all_imputed$crit_2_1_B_raw ), all_imputed$continent_mean_2_1_B_raw , all_imputed$crit_2_1_B_raw )
-all_imputed$crit_2_1_C_raw  <- ifelse(is.na(all_imputed$crit_2_1_C_raw ), all_imputed$continent_mean_2_1_C_raw , all_imputed$crit_2_1_C_raw )
-all_imputed$crit_2_1_D_raw  <- ifelse(is.na(all_imputed$crit_2_1_D_raw ), all_imputed$continent_mean_2_1_D_raw , all_imputed$crit_2_1_D_raw )
-
-all_imputed$crit_2_1_A <- ifelse(is.na(all_imputed$crit_2_1_A), all_imputed$continent_mean_2_1_A, all_imputed$crit_2_1_A)
-all_imputed$crit_2_1_B <- ifelse(is.na(all_imputed$crit_2_1_B), all_imputed$continent_mean_2_1_B, all_imputed$crit_2_1_B)
-all_imputed$crit_2_1_C <- ifelse(is.na(all_imputed$crit_2_1_C), all_imputed$continent_mean_2_1_C, all_imputed$crit_2_1_C)
-all_imputed$crit_2_1_D <- ifelse(is.na(all_imputed$crit_2_1_D), all_imputed$continent_mean_2_1_D, all_imputed$crit_2_1_D)
-
-all_imputed$crit_2_2_A_raw <- ifelse(is.na(all_imputed$crit_2_2_A_raw), all_imputed$continent_mean_2_2_A_raw, all_imputed$crit_2_2_A_raw)
-all_imputed$crit_2_2_B_raw <- ifelse(is.na(all_imputed$crit_2_2_B_raw), all_imputed$continent_mean_2_2_B_raw, all_imputed$crit_2_2_B_raw)
-#all_imputed$crit_2_2_C_raw <- ifelse(is.na(all_imputed$crit_2_2_C_raw), all_imputed$continent_mean_2_2_C_raw, all_imputed$crit_2_2_C_raw)
-all_imputed$crit_2_2_D_raw <- ifelse(is.na(all_imputed$crit_2_2_D_raw), all_imputed$continent_mean_2_2_D_raw, all_imputed$crit_2_2_D_raw)
-
-all_imputed$crit_2_2_A <- ifelse(is.na(all_imputed$crit_2_2_A), all_imputed$continent_mean_2_2_A, all_imputed$crit_2_2_A)
-all_imputed$crit_2_2_B <- ifelse(is.na(all_imputed$crit_2_2_B), all_imputed$continent_mean_2_2_B, all_imputed$crit_2_2_B)
-#all_imputed$crit_2_2_C <- ifelse(is.na(all_imputed$crit_2_2_C), all_imputed$continent_mean_2_2_C, all_imputed$crit_2_2_C)
-all_imputed$crit_2_2_D <- ifelse(is.na(all_imputed$crit_2_2_D), all_imputed$continent_mean_2_2_D, all_imputed$crit_2_2_D)
-
-
-
-#recalc sensitiveity with imputed data. This uses just observed data to calculate averages.
-
-all_imputed_with_S <- all_imputed %>% 
-  mutate_all(~ifelse(is.nan(.), NA, .))   %>%
-  mutate(crit_2_1 = scales::rescale(rowMeans(dplyr::select(., 
-                                                    crit_2_1_A,
-                                                    crit_2_1_B ,
-                                                    crit_2_1_C,
-                                                    crit_2_1_D),na.rm=TRUE))) %>% #Europe does not have SSF employment data
-  mutate(crit_2_1_raw = scales::rescale(rowMeans(dplyr::select(., 
-                                                           crit_2_1_A_raw,
-                                                           crit_2_1_B_raw ,
-                                                           crit_2_1_C_raw,
-                                                           crit_2_1_D_raw),na.rm=TRUE))) %>% #Europe does not have SSF employment data
-  mutate(crit_2_2 = scales::rescale(rowMeans(dplyr::select(., 
-                                                    crit_2_2_A,
-                                                    crit_2_2_B ,
-                                                   # crit_2_2_C,
-                                                    crit_2_2_D)))) %>% 
-  mutate(crit_2_2_raw = scales::rescale(rowMeans(dplyr::select(., 
-                                                           crit_2_2_A_raw,
-                                                           crit_2_2_B_raw ,
-                                                          # crit_2_2_C_raw,
-                                                           crit_2_2_D_raw)))) %>% 
-  mutate(sensitivity = rowMeans(dplyr::select(., 
-                                            crit_2_1,
-                                            crit_2_2))) %>% 
-  mutate(sensitivity_raw = rowMeans(dplyr::select(., 
-                                              crit_2_1_raw,
-                                              crit_2_2_raw)))
-
-all_indices_imputed<- all_imputed_with_S %>% 
+  mutate_all(~ifelse(is.nan(.), NA, .)) %>%  #remove a couple NaNs and replace with NA
   mutate(
-    #exposure_scaled=scales::rescale(exposure_scaled),
          sensitivity_scaled=scales::rescale(sensitivity),
          adaptive_capacity_scaled=scales::rescale(adaptive_capacity_raw),
          adaptive_capacity_inverse_scaled=scales::rescale(adaptive_capacity_inverse))
   
 #exclude country without all three indices
-all_indices_complete <- all_indices_imputed[complete.cases(all_indices_imputed[c('sensitivity_scaled', 'adaptive_capacity_inverse_scaled', 'exposure_scaled')]), ]
+all_components <- all_components[complete.cases(all_components[c('sensitivity_scaled', 'adaptive_capacity_inverse_scaled', 'exposure_scaled')]), ]
 
-
-df <- all_indices_complete %>%
+#check simple methods of producing the SIFI Index
+df <- all_components %>%
   group_by(country_ISO_alpha3) %>%
   mutate(   overall_index_sum =( exposure_scaled + sensitivity_scaled + adaptive_capacity_inverse_scaled), 
             
@@ -1078,9 +923,6 @@ df <- all_indices_complete %>%
     index_mean_scaled = scales::rescale(log(overall_index_mean+1), to = c(0, 1))
   ) 
 
-
-setwd("/Users/melissacronin/Desktop/factor_analysis")
-write.csv(df,"vulnerability_index.results.csv")
 
 
 #PLOT SUBINDEX SCALED DISTRIBUTIONS ######
@@ -1223,13 +1065,13 @@ top_quartile <- df[df$index_prod_scaled >= threshold, ]
 # Find the minimum index score in the top quartile
 min_index_score <- min(top_quartile$index_prod_scaled )
 
-# List of countries to highlight
+# List of focal countries to highlight, just to explore how they sit within the data
 highlight_countries <- c("BRA", "GMB", "GAB", "ARG", "ESP", "CHL", "GNQ", "PER", "VCT")
 
 df_without_missing <- df[!is.na(df$index_prod_scaled), ]
 
 # Create the scatter plot with quartiles and lines
-ggplot(df_without_missing, aes(x = fct_reorder(country_ISO_alpha3,index_prod_scaled),y = index_prod_scaled )) +
+ggplot(df, aes(x = fct_reorder(country_ISO_alpha3,index_prod_scaled),y = index_prod_scaled )) +
   geom_rect(
     xmin = -Inf, xmax = Inf, ymin = threshold, ymax = 1,
     fill = "lightgray", aes(alpha = 0.9 ) # Shaded rectangle for top quartile
@@ -1247,12 +1089,13 @@ ggplot(df_without_missing, aes(x = fct_reorder(country_ISO_alpha3,index_prod_sca
     text = element_text(size = 24),
     axis.text.x = element_text(size = 10) 
   )
-ggsave("quartile_country_locations.tiff", dpi=300, height=8, width=12)
+#ggsave("quartile_country_locations.tiff", dpi=300, height=8, width=12)
 
-#### SENSITIVITY ANALYSES ######
+#### SENSITIVITY ANALYSES ###############################
 ##PCA for sensitivity 
 # Select the columns you want to include in PCA (excluding non-numeric columns)
-selected_columns <- df_without_missing%>%
+
+selected_columns <- df%>%
   dplyr::select(exposure_scaled, sensitivity_scaled, adaptive_capacity_inverse_scaled)
 
 # Perform PCA
@@ -1319,11 +1162,9 @@ biplot_plot<- ggplot(biplot_data, aes(x = PC1, y = PC2, color = Variable)) +
   theme(legend.position="none")
 
 # Display the biplot and scree plot side by side
-
-library(patchwork) 
 biplot_plot+ scree_plot
 
-ggsave("PCA_plots_with_china.tiff", dpi=300, width=10, height=7)
+#ggsave("PCA_plotsa.tiff", dpi=300, width=10, height=7)
 
 
 
@@ -1351,7 +1192,7 @@ print(sensitivity_plot)
 
 # Compute the correlation matrix for all variables, including subindices
 correlation_matrix <- cor(df_without_missing[, c("exposure_scaled", "sensitivity_scaled", "adaptive_capacity_inverse_scaled", "index_mean_scaled")])
-library(RColorBrewer)
+
 # Customize the color scale for the heatmap
 colors <- colorRampPalette(rev(brewer.pal(6, "RdYlBu")))(100)
 
@@ -1389,166 +1230,20 @@ ggsave("correlation_plot_index.png", dpi=300, height=6, width=7)
 
 ##CREATE MAPS ######
 
-
-
-
-
-
-setwd("/Users/melissacronin/Desktop/IHH/IHH_country_criteria_prioritization/")
-#write.csv(df, "ssf_rankings_without_china.csv")
-
-df_new_named<- df_without_missing %>% 
-  rename(Alpha.3.code=country_ISO_alpha3) %>% 
-  dplyr::select(Alpha.3.code,
-              exposure_scaled,
-                sensitivity_scaled,
-               adaptive_capacity_scaled,adaptive_capacity_inverse_scaled,
-                index_sum_scaled ,
-                index_prod_scaled ,
-                index_mean_scaled    
-                ) %>% 
-  as.data.frame()
-
-
-setwd("/Users/melissacronin/Desktop/IHH/country_indicators/")
-country_indicators<-read.csv("recent_country_indicators.csv",sep=",", header=T) %>% 
-  rename(Alpha.3.code = ISO.Alpha3 )
-
-df_new_indicators<- df_new_named %>% 
-  left_join(country_indicators, by = "Alpha.3.code")
-
 world_shp_iso <- world_shp %>%
   mutate(Alpha.3.code = countrycode(sourcevar = ID, origin = "country.name", destination = "iso3c"))
 
-df_spatial <- merge(world_shp_iso, df_new_indicators,by="Alpha.3.code" )
+df<-df %>%  rename(Alpha.3.code =country_ISO_alpha3)
+df_spatial <- merge(world_shp_iso, df,by="Alpha.3.code" )
 
-head(df_spatial)
-####VULNERABILITY
-
-A<-  ggplot() +
-  geom_sf(data = world_shp_iso , fill = "gray", color = "lightgrey") +
-  geom_sf(data=df_spatial, aes(fill = index_mean_scaled), color = "lightgrey")+
-  color_scale+
-  labs(fill = "Vulnerability Index") +
-  theme_classic() +
-  theme(legend.position = "top", legend.text = element_text(size = 8), legend.title = element_text(size = 10))+
-  geom_hline(yintercept = 0,  color = "darkgrey", alpha = 0.5,  linewidth = 0.2) +  # Equator
-  geom_hline(yintercept = 23.5, linetype = "dashed",color = "darkgrey", alpha = 0.8, linewidth=0.2) +  # Tropic of Cancer
-  geom_hline(yintercept = -23.5, linetype = "dashed", color = "darkgrey", alpha = 0.8, linewidth = 0.2)  # Tropic of Capricorn
-A
-ggsave("vulnerability_map.tiff", dpi=300, height=3, width=6)
-
-
-#add grouped bars by CONTINENTS
-selected_columns <- c("ID", "index_prod_scaled", "FAO.Region")
-# Subset the data frame
-df_subset <- df_spatial[selected_columns]
-df_subset$Country <- factor(df_subset$ID, levels = unique(df_subset$ID[order(df_subset$FAO.Region)]))
-region_order <- c( "Europe/Asia", "Europe","Oceania","Americas","Asia", "Africa" )
-# Order the levels of FAO.Region
-df_subset$FAO.Region <- factor(df_subset$FAO.Region, levels = region_order)
-df_subset$ID<- factor(df_subset$ID, levels = unique(df_subset$ID[order(df_subset$FAO.Region, df_subset$index_prod_scaled)]))
-
-
-P<-ggplot(df_subset, aes(x = ID, y = index_prod_scaled,fill = index_prod_scaled)) +
-  geom_bar(stat = "identity", position = "dodge") +
-  labs(x = "Country", y = "Vulnerability") +
-  theme_classic() +
-  color_scale+
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  theme(legend.position = "none") +  
-  coord_flip() +  # Flip coordinates
-  scale_y_continuous(expand=c(0,0))+
-  theme(
-    text = element_text(size = 14),
-    axis.text.y = element_text(size = 6)
-  )+
-  scale_x_discrete(expand = c(0.03, 0.03)) 
-P
-ggsave("countries_grouped.tiff", dpi=300, height=10, width=5)
-
-
-
-#check for effect of region
-# Perform anova
-region_anova_result <- aov(index_prod_scaled ~ FAO.Region, data = df_spatial)
-p_value_region <- summary(region_anova_result)[[1]]$`Pr(>F)`[1]
-
-# Print the ANOVA result
-summary(region_anova_result)
-region_order <- c(  "Africa" , "Asia", "Oceania","Europe/Asia","Americas","Europe")
-# Order the levels of FAO.Region
-df_spatial$FAO.Region <- factor(df_spatial$FAO.Region, levels = region_order)
-
-region_compared<-
-  ggplot(df_spatial, aes(y = index_prod_scaled, x = FAO.Region)) +
-  geom_jitter(color="lightgrey")+
-    geom_boxplot(fill="transparent",outlier.shape = NA) +
-  labs(title="A",y = "Vulnerability", x = "Region") +
-  theme_classic()+
-  annotate("text", x = 3, y = max(df_spatial$index_prod_scaled) * 0.95, 
-           label = ifelse(t_test_tropical$p.value > 0.01, "p > 0.01", ifelse(t_test_tropical$p.value < 0.001, "p < 0.001", paste("p =", signif(t_test_tropical$p.value, digits = 3)))),
-           hjust = 1, size = 4)+
-  theme(text = element_text(size = 14))
-
-region_compared
-
-
-df_spatial$LeastDeveloped_2018 <- factor(ifelse(is.na(df_spatial$LeastDeveloped_2018) | df_spatial$LeastDeveloped_2018 == "no", "no", "yes"), levels = c("yes", "no"))
-t_test_LDC <- t.test(index_prod_scaled ~ LeastDeveloped_2018, data = df_spatial)
-
-LDC_compared<-ggplot(df_spatial, aes(y = index_prod_scaled,x = LeastDeveloped_2018)) +
-  geom_jitter(color="lightgrey")+
-  geom_boxplot(fill="transparent",outlier.shape = NA) +
-  labs(title="B", x = "Development level", y = "Vulnerability") +
-  theme_classic() +
-  theme(text = element_text(size = 14))+
-  scale_x_discrete(labels = c("yes" = "LDC", "no" = "Non-LDC"))+
-  annotate("text", x = 1.8, y = max(df_spatial$index_prod_scaled) * 0.95, 
-           label = ifelse(t_test_LDC$p.value > 0.01, "p > 0.01", ifelse(t_test_LDC$p.value < 0.001, "p < 0.001", paste("p =", signif(t_test_tropical$p.value, digits = 3)))),
-           hjust = 1, size = 4)
-
-
-#check for effect of tropcial 
-df_spatial <- df_spatial[complete.cases(df_spatial$Tropical), ]
-
-df_spatial <- df_spatial %>%
-  mutate(Tropical = ifelse(Proportion_TropicsZone > 0.75, "Tropical", "Not Tropical"))
-df_spatial$Tropical <- factor(df_spatial$Tropical, levels = c("Tropical", "Not Tropical"))
-
-
-#t test
-t_test_tropical <- t.test(index_prod_scaled ~ Tropical, data = df_spatial)
-
-tropical_compared<- ggplot(df_spatial, aes(y = index_prod_scaled,x = Tropical)) +
-  geom_jitter(color="lightgrey")+
-  geom_boxplot(fill="transparent",outlier.shape = NA) +
-  labs(title="C", y = "Vulnerability", x = "Country type") +
-  theme_classic() +
-  annotate("text", x = 1.8, y = max(df_spatial$index_prod_scaled) * 0.95, 
-           label = ifelse(t_test_tropical$p.value > 0.01, "p > 0.01", 
-                          ifelse(t_test_tropical$p.value < 0.001, "p < 0.001",
-                                 paste("p =", signif(t_test_tropical$p.value, digits = 3)))),
-           hjust = 1, size = 4)+
-  theme(text = element_text(size = 18))
-
-tropical_compared
-
-boxplots<-region_compared+(LDC_compared+tropical_compared )
-boxplots
-
-ggsave("boxplots.tiff", dpi=300, height=3, width=12)
-
-
-
+####
 
 # Create a bar chart of the top 20 ranking exposure countries
 top_20_vulnerability <- df_spatial %>% 
   arrange(desc(index_mean_scaled)) %>% 
   slice(1:20)
 
-
-bar_A <- ggplot(top_20_vulnerability, aes(x = reorder(Country, index_prod_scaled), y = index_prod_scaled, fill=index_prod_scaled)) +
+bar_A <- ggplot(top_20_vulnerability, aes(x = reorder(Alpha.3.code, index_prod_scaled), y = index_prod_scaled, fill=index_prod_scaled)) +
   geom_bar(stat = "identity") +
   scale_y_continuous(expand=c(0,0))+
   coord_flip() +
@@ -1561,20 +1256,12 @@ bar_A <- ggplot(top_20_vulnerability, aes(x = reorder(Country, index_prod_scaled
     text = element_text(size = 16),  
     axis.text = element_text(size = 14) )
 
-
-# Combine the map and bar chart
-combined_A <- (
-  (A + plot_layout(widths = c(1, 0.15))) / 
-    (bar_A + plot_layout(widths = c(1, 0.15)))
-)
-combined_A
-#ggsave("final_plot_november.tiff", dpi=300, height=10, width=5)
-
+bar_A
 
 
 ###### EXPOSURE
 
-B<-
+exposure_map<-
   ggplot() +
   geom_sf(data = world_shp , fill = "lightgray", color = "darkgray") +
   geom_sf(data = df_spatial , aes(fill = exposure_scaled), color = "darkgray") +
@@ -1583,7 +1270,7 @@ B<-
   theme_bw()+
   theme(legend.position = "top", legend.text = element_text(size = 8), legend.title = element_text(size = 10))
 
-B
+exposure_map
 
 
 # Create a bar chart of the top 20 ranking exposure countries
@@ -1591,7 +1278,7 @@ top_20_exposure <- df_spatial %>%
   arrange(desc(exposure_scaled)) %>% 
   slice(1:20)
 
-bar_B <- ggplot(top_20_exposure, aes(x = reorder(Country, exposure_scaled), y = exposure_scaled, fill=exposure_scaled)) +
+bar_exposure <- ggplot(top_20_exposure, aes(x = reorder(Alpha.3.code, exposure_scaled), y = exposure_scaled, fill=exposure_scaled)) +
   geom_bar(stat = "identity") +
   scale_y_continuous(expand=c(0,0))+
   coord_flip() +
@@ -1604,17 +1291,10 @@ bar_B <- ggplot(top_20_exposure, aes(x = reorder(Country, exposure_scaled), y = 
     text = element_text(size = 16),  
     axis.text = element_text(size = 14) )
 
+bar_exposure
 
-# Combine the map and bar chart
-combined_B <- (
-  (B + plot_layout(widths = c(1, 0.15))) / 
-    (bar_B + plot_layout(widths = c(1, 0.15)))
-)
-combined_B
 
-ggsave("exposure_november.tiff", dpi=300, height=5, width=10)
-
-C<-
+sensitivity_map<-
   ggplot() +
   geom_sf(data = world_shp , fill = "lightgray", color = "darkgray") +
   geom_sf(data=df_spatial, aes(fill =sensitivity_scaled), color = "darkgray") +
@@ -1622,16 +1302,16 @@ C<-
   labs( fill = "Sensitivity") +
   theme_bw()+
   theme(legend.position = "top", legend.text = element_text(size = 8), legend.title = element_text(size = 10))
-C
 
-ggsave("sensitivity_feb.tiff", dpi=300, height=5, width=10)
+sensitivity_map
+
 
 # Create a bar chart of the top 20 ranking countries
 top_20_sensitivity <- df_spatial %>% 
   arrange(desc(sensitivity_scaled)) %>% 
   slice(1:20)
 
-bar_C <- ggplot(top_20_sensitivity, aes(x = reorder(Country, sensitivity_scaled), y = sensitivity_scaled, fill=sensitivity_scaled)) +
+sensitivity_bar <- ggplot(top_20_sensitivity, aes(x = reorder(Alpha.3.code, sensitivity_scaled), y = sensitivity_scaled, fill=sensitivity_scaled)) +
   geom_bar(stat = "identity") +
   scale_y_continuous(expand=c(0,0))+
   coord_flip() +
@@ -1644,34 +1324,25 @@ bar_C <- ggplot(top_20_sensitivity, aes(x = reorder(Country, sensitivity_scaled)
     text = element_text(size = 16),  
     axis.text = element_text(size = 14) )
   
-
-# Combine the map and bar chart
-combined_C <- (
-  (C + plot_layout(widths = c(1, 0.15))) / 
-    (bar_C + plot_layout(widths = c(1, 0.15)))
-)
-combined_C
+sensitivity_bar 
 
 
-ggsave("Sensitivity_november.tiff", dpi=300, height=5, width=10)
-
-
-D<- ggplot() +
+adaptive_capacity_map<- ggplot() +
   geom_sf(data = world_shp , fill = "lightgray", color = "darkgray") +
   geom_sf(data=df_spatial, aes(fill =adaptive_capacity_scaled), color = "darkgray") +
   scale_fill_viridis_c(option = "magma", direction = 1, na.value = "gray", limits = color_range)+
   labs( fill = "Adaptive capacity") +
   theme_bw()+
   theme(legend.position = "bottom", legend.text = element_text(size = 8), legend.title = element_text(size = 10))
-D
-ggsave("ac_november.tiff", dpi=300, height=5, width=10)
+
+adaptive_capacity_map
 
 # Create a bar chart of the top 20 ranking exposure countries
 top_20_adaptive_capacity <- df_spatial %>% 
   arrange((adaptive_capacity_inverse_scaled)) %>% 
   slice(1:20)
 
-bar_D <- ggplot(top_20_adaptive_capacity, aes(x = reorder(Country, adaptive_capacity_scaled), y = adaptive_capacity_scaled, fill=adaptive_capacity_scaled)) +
+adaptive_capacity_bar <- ggplot(top_20_adaptive_capacity, aes(x = reorder(Alpha.3.code, adaptive_capacity_scaled), y = adaptive_capacity_scaled, fill=adaptive_capacity_scaled)) +
   geom_bar(stat = "identity") +
   scale_y_continuous(expand=c(0,0))+
   coord_flip() +
@@ -1684,46 +1355,8 @@ bar_D <- ggplot(top_20_adaptive_capacity, aes(x = reorder(Country, adaptive_capa
     text = element_text(size = 16),  
     axis.text = element_text(size = 14) )
 
-# Combine the map and bar chart
-combined_D <- (
-  (D + plot_layout(widths = c(1, 0.15))) / 
-    (bar_D + plot_layout(widths = c(1, 0.15)))
-)
- 
-combined_D
+adaptive_capacity_bar 
 
-#plot just the top 20 bars
-plot_grid(bar_B, bar_C, bar_D,bar_A, ncol = 4)
-
-ggsave("top_20_plots.tiff", dpi=300, width=15, height=6)
-
-
-ggsave("Adaptive_capacity_november.tiff", dpi=300, height=5, width=10)
-
-#final map of index and 3 sub indices
-# Arrange the plots using patchwork
-final_plot_map <- A / (B + C + D) +
-  plot_layout(ncol = 1, heights = c(3, 1, 1, 1))  # Specify the layout, adjust heights as needed
-
-# Display the final plot
-final_plot_map
-
-# Create the first column with maps
-column1 <- A+ B + C + D + plot_layout(nrow=5, ncol = 1, heights = c(1,1, 1, 1))
-
-# Create the second column with corresponding bar charts
-column2 <- bar_A + bar_B + bar_C + bar_D + plot_layout(nrow=5,ncol = 1, heights = c(1,1, 1, 1))
-
-# Combine both columns side by side
-big_plot <- column1 + column2 + plot_layout(nrow=5,ncol = 2)
-
-
-# Display the big combined plot
-big_plot
-
-#ggsave("final_plot_with_china_oct9.tiff", dpi=300, height=10, width=20)
-
-ggsave("final_plot_november.tiff", dpi=300, height=5, width=20)
 
 
 
@@ -1731,60 +1364,13 @@ ggsave("final_plot_november.tiff", dpi=300, height=5, width=20)
 
 
 #OTHER PLOTS #######
-
-
-# Create a bar chart for the top 20 countries
-bars<-df_new_indicators %>%
-  arrange(desc(index_prod_scaled)) %>%
-  ggplot(aes(x = reorder(Country, -index_prod_scaled), y = index_prod_scaled, fill = index_prod_scaled)) +
-  geom_bar(stat = "identity") +
-  scale_fill_viridis_c(option = "magma", direction = -1) +
-  labs(x = "Country", y = "Index") +
-  theme_classic() +
-  theme(text=element_text(size=13))+
-  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1))
-bars
-
-ggsave("country_scores_plot.tiff", dpi=300, width=19, height=5)
-
-# Assign continents to countries using the countrycode package
-df_continents <- df_new_named %>%
-  mutate(Continent = countrycode(
-    Alpha.3.code, 
-    origin = "iso3c", 
-    destination = "continent"
-  ))
-
-
-# Calculate the average score by continent
-average_scores <- df_continents %>%
-  group_by(Continent) %>%
-  summarise(Average_Score = mean(index_prod_scaled, na.rm = TRUE))
-
-# Create a bar plot of the average scores by continent
-continent_plot <- ggplot(average_scores, aes(x = reorder(Continent, Average_Score), y = Average_Score)) +
-  geom_bar(stat = "identity") +
- # scale_fill_viridis_c(option = "magma", direction = -1) +
-  labs(x = "Continent", y = "Mean Vulnerability") +
-  theme_classic() +
-  coord_flip() +
-  scale_y_continuous(expand=c(0,0))+
-  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1))+
-  theme(text=element_text(size=25))
-
-# Display the bar plot
-continent_plot
-
-ggsave("continent_plot.tiff")
+#exploratory analyses of relationships between components
 
 # Set a threshold value for displaying labels
 threshold_value <- 0.8  # Adjust this value to your preference
 
-
 # Create bubble plot to show relationship between exposure and s, ac
-
-
-plot_data_lm<- df_new_named %>% 
+plot_data_lm<- df %>% 
  # filter(Alpha.3.code!="CHN") %>% 
   mutate(mean_sensitivity_adaptive = rowMeans(cbind(sensitivity_scaled, adaptive_capacity_inverse_scaled)))
 
@@ -1796,7 +1382,7 @@ p_value_slope <- summary(linear_model)$coefficients["mean_sensitivity_adaptive",
 
 
 mean_S_AC<-plot_data_lm%>%
-  ggplot(aes(y = exposure_scaled, x = mean_sensitivity_adaptive), alpha=0.9) +
+  ggplot(aes(y = exposure_scaled, x = mean_sensitivity_adaptive)) +
   geom_point(aes(alpha=0.8), size=4) +
   labs(y = "Exposure", x  = "Mean(Adaptive capacity, Sensitivity)" , title="Exposure - Mean(S, AC)") +
   theme_classic()+
@@ -1807,28 +1393,18 @@ mean_S_AC<-plot_data_lm%>%
   annotate("text", x = 0.3, y = 0.9, 
            label = paste("Slope: ", round(coef(linear_model)[2], 4), "\nIntercept: ", round(coef(linear_model)[1], 4), "\np-value: ", format(p_value_slope, scientific = TRUE)), 
        color = "black")
-
-  #  geom_text_repel(
-  #   aes(  label =ifelse(index_mean_scaled > threshold_value, as.character(ID), "")),
-  #    size=6,
-  #   box.padding = 0.5,  # Adjust the padding around the label
-  #   force = 15 , # Adjust the force parameter to control label placement
-  # max.overlaps = Inf  ) 
-
-  
-
-ggsave("bubble_plot_lm_noChina.tiff", dpi=300, width=6, height=8)
+mean_S_AC
 
 
 #senstivity alone 
-linear_model_S <- lm(exposure_scaled ~ sensitivity_scaled, data =  df_new_named)
+linear_model_S <- lm(exposure_scaled ~ sensitivity_scaled, data =  df)
 summary(linear_model_S)
 
 # Extract p-value for the slope coefficient
 p_value_slope_S <- summary(linear_model_S)$coefficients["sensitivity_scaled", "Pr(>|t|)"]
 
-sensitivity_plot<- df_new_named %>%
-  ggplot(aes(y = exposure_scaled, x = sensitivity_scaled), alpha=0.9) +
+sensitivity_plot<- df %>%
+  ggplot(aes(y = exposure_scaled, x = sensitivity_scaled)) +
   geom_point(aes(alpha=0.8), size=4) +
   labs(y = "Exposure", x  = "Sensitivity", title="Exposure - Sensitivity") +
   theme_classic()+
@@ -1839,15 +1415,16 @@ sensitivity_plot<- df_new_named %>%
            label = paste("Slope: ", round(coef(linear_model_S)[2], 4), "\nIntercept: ", round(coef(linear_model_S)[1], 4), "\np-value: ", format(p_value_slope_S, scientific = TRUE)), 
            color = "black")
 
+sensitivity_plot
 
-linear_model_AC <- lm(exposure_scaled ~ adaptive_capacity_inverse_scaled, data =  df_new_named)
+linear_model_AC <- lm(exposure_scaled ~ adaptive_capacity_inverse_scaled, data =  df)
 summary(linear_model_AC)
 
 # Extract p-value for the slope coefficient
 p_value_slope_AC <- summary(linear_model_AC)$coefficients["adaptive_capacity_inverse_scaled", "Pr(>|t|)"]
 
-AC_plot<-df_new_named %>%
-  ggplot(aes(y = exposure_scaled, x = adaptive_capacity_inverse_scaled), alpha=0.9) +
+AC_plot<-df %>%
+  ggplot(aes(y = exposure_scaled, x = adaptive_capacity_inverse_scaled)) +
   geom_point(aes(alpha=0.8), size=4) +
   labs(y = "Exposure", x  = "Adaptive Capacity", title="Exposure - Adaptive Capacity") +
   theme_classic()+
@@ -1858,7 +1435,7 @@ AC_plot<-df_new_named %>%
   annotate("text", x = 0.3, y = 0.9, 
            label = paste("Slope: ", round(coef(linear_model_AC)[2], 4), "\nIntercept: ", round(coef(linear_model_AC)[1], 4), "\np-value: ", format(p_value_slope_AC, scientific = TRUE)), 
            color = "black")
+AC_plot
 
 mean_S_AC + sensitivity_plot + AC_plot
 
-ggsave("bubble_plot_lm_triple_plot.tiff", dpi=300, width=11, height=6)
