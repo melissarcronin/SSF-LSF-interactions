@@ -83,8 +83,7 @@ gfw_data <- read.csv(
   filter(country_name!="") %>% #remove eez null fishing
   dplyr::select(country_name, matched_fishing, unmatched_fishing)
 
-#1_1_B Ratio of undetected fishing to detected fishing
-#Ratio of LSF fishing activity that is not publicly tracked (AIS activity is missing from public monitoring systems) to fishing activity that is publicly tracked with 25 km of shore
+#1_1_A AIS-braodcasting fishing density
 
 gfw_data$Alpha.3.code <- countrycode(gfw_data$country_name, "country.name", "iso3c")
 
@@ -102,13 +101,15 @@ crit_1_1_A_data <- gfw_data %>%
   mutate(crit_1_1_A_log  = log(crit_1_1_A_raw+1)) %>% 
   mutate(crit_1_1_A  =scales::rescale(crit_1_1_A_log ))
 
-crit_1_1_A_data %>% 
+crit_1_1_A_histogram<-crit_1_1_A_data %>% 
   ggplot()+
   geom_histogram(aes(x=crit_1_1_A))
 
 
 
 #create crit_1_1_B : Non-matched (eg non-broadcasting) LSF density vessel detections
+# LSF fishing activity that is not publicly tracked (AIS activity is missing from public monitoring systems) 
+
 crit_1_1_B_data <- gfw_data %>%
   mutate(Alpha.3.code = if_else(country_name %in% names(countries_subset), 
                                 countries_subset[country_name], 
@@ -535,12 +536,6 @@ crit_2_1_data <-crit_2_1_A_data %>%
     destination = "continent") #assign region for imputing later
   ) %>%
   dplyr::select(country_ISO_alpha3, Subregion,Continent,
-                
-                # crit_2_1_A_raw,
-                # crit_2_1_B_raw,
-                # crit_2_1_C_raw, 
-                #  crit_2_1_D_raw) %>% 
-
                 crit_2_1_A,
                 crit_2_1_B,
                 crit_2_1_C,
@@ -649,19 +644,10 @@ crit_2_2_data <-crit_2_2_A_data %>%
 
 
 ### CALCULATE SENSITIVYTY INDEX (before imputation, see below). We don't impute here because we want to have all the other data for possible countries based on data availability for exposure and adaptive capacity #####
-sensitivity_data<- crit_2_1_data %>% 
+sensitivity_data_original<- crit_2_1_data %>% 
   left_join(crit_2_2_data, by =c( "country_ISO_alpha3", "Continent", "Subregion"))  %>% 
   dplyr::select(country_ISO_alpha3, Continent, Subregion,
-                
-                crit_2_1_A_raw,
-                crit_2_1_B_raw,
-                crit_2_1_C_raw,
-                crit_2_1_D_raw,
-                
-                crit_2_2_A_raw,
-                crit_2_2_B_raw,
-                crit_2_2_C_raw,
-                
+         
                 crit_2_1_A,
                 crit_2_1_B,
                 crit_2_1_C,
@@ -671,22 +657,6 @@ sensitivity_data<- crit_2_1_data %>%
                 crit_2_2_B,
                 crit_2_2_C
                 )
-
-
-# reshaped_data <- sensitivity_data %>%
-#   gather(key = "variable", value = "value", -country_ISO_alpha3) %>%
-#   group_by(variable) %>%
-#   summarise(mean = mean(value, na.rm = TRUE), sd = sd(value, na.rm = TRUE))
-# 
-# sensitivity_means<- ggplot(reshaped_data, aes(x = variable, y = mean)) +
-#   geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd), width = 0.2, position = position_dodge(0.8)) +
-#   theme_classic() +
-#   labs(title="Sensitivity")+
-#   scale_y_continuous(limits=c(-.1, 1))+
-#   theme(axis.text.x = element_text(angle = 45, hjust = 1))
-# 
-# sensitivity_means #without imputation
-
 
 
 ###############################################################################
@@ -847,7 +817,6 @@ crit_2_1_data<- crit_2_1_data_complete %>%
                                                            crit_2_1_D    ), na.rm = TRUE))) %>%
   filter(crit_2_1!="-Inf")
 
-
 # Calculate the continent-wise averages for crit_2_1
 crit_2_2_region_avg <- crit_2_2_data%>%
   group_by(Continent) %>%
@@ -880,7 +849,42 @@ sensitivity_data <- crit_2_1_data %>%
     sensitivity = rowMeans(dplyr::select(., crit_2_1, crit_2_2), na.rm = TRUE)
   )
 
+#create a table to show for which countreis data were imputed 
 
+
+# Columns to check for imputation (exclude '_raw')
+crit_cols <- c("crit_2_1_A","crit_2_1_B","crit_2_1_C","crit_2_1_D",
+               "crit_2_2_A","crit_2_2_B","crit_2_2_C")
+
+sensitivity_combined <- sensitivity_data %>%
+  inner_join(
+    sensitivity_data_original %>% dplyr::select(country_ISO_alpha3, Continent, all_of(crit_cols)),
+    by = c("country_ISO_alpha3","Continent"),
+    suffix = c("_final","_orig")
+  )
+
+imputed_countries <- sensitivity_combined %>%
+  dplyr::select(country_ISO_alpha3, Continent,
+         crit_2_1_A_orig, crit_2_1_B_orig, crit_2_1_C_orig, crit_2_1_D_orig,
+         crit_2_2_A_orig, crit_2_2_B_orig, crit_2_2_C_orig) %>%
+  pivot_longer(
+    cols = ends_with("_orig"),
+    names_to = "criterion",
+    values_to = "value"
+  ) %>%
+  filter(is.na(value)) %>%  # keep only originally missing
+  mutate(criterion = gsub("_orig", "", criterion)) %>%
+  group_by(Continent, criterion) %>%
+  summarize(countries = paste(country_ISO_alpha3, collapse = ", "), .groups = "drop")
+
+
+#imputation was only done for 2_2_C; all other countries were removed for too much missing data. 
+#10 countries received imputed 2_2_C data: 
+#Africa: COD, COM, ERI, GNQ, LBY
+#Asia: BHR, QAT, SYR
+#Oceania: PNG, TON
+
+#taiwan was imputed but it is removed in the next step bc it does not have exposure data. 
 
 
 ######## MERGE 3 INDICES  ###########################
@@ -905,6 +909,36 @@ all_components <- exposure_data_df %>%
 #exclude country without all three indices
 all_components <- all_components[complete.cases(all_components[c('sensitivity_scaled', 'adaptive_capacity_inverse_scaled', 'exposure_scaled')]), ]
 
+# Specify all the variables (main components + sub-criteria) for a summary table
+all_cols <- c(
+  # main indices
+  "exposure_scaled", "sensitivity_scaled", "adaptive_capacity_inverse_scaled",
+  # sub-criteria
+  "crit_1_1_A", "crit_1_1_B",
+  "crit_1_2",
+  "crit_2_1_A", "crit_2_1_B", "crit_2_1_C", "crit_2_1_D",
+  "crit_2_2_A", "crit_2_2_B", "crit_2_2_C",
+  "crit_3_1", 
+  "crit_3_2_A", "crit_3_2_B", "crit_3_2_C", "crit_3_2_D", "crit_3_2_E", "crit_3_2_F"
+)
+
+# Create summary table
+summary_table <- df %>%
+  dplyr::select(all_of(all_cols)) %>%
+  pivot_longer(everything(), names_to = "Variable", values_to = "Value") %>%
+  group_by(Variable) %>%
+  summarize(
+    Mean = mean(Value, na.rm = TRUE),
+    Median = median(Value, na.rm = TRUE),
+    Min = min(Value, na.rm = TRUE),
+    Max = max(Value, na.rm = TRUE),
+    SD = sd(Value, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%   mutate(across(where(is.numeric), ~round(., 3)))
+
+summary_table
+write.csv(summary_table, "variable_summaries.csv")
+
 #check simple methods of producing the SIFI Index
 df <- all_components %>%
   group_by(country_ISO_alpha3) %>%
@@ -925,10 +959,32 @@ df <- all_components %>%
 
 
 
-#PLOT SUBINDEX SCALED DISTRIBUTIONS ######
+#PLOT DISTRIBUTIONS ######
+
+# ===== HISTOGRAMS OF CRITERIA (crit_2_1, crit_2_2, etc.) =====
+crit_long <- df %>%
+  dplyr::select(Alpha.3.code, starts_with("crit_")) %>%
+  dplyr::select(-ends_with("_raw")) %>%   # exclude raw columns
+  pivot_longer(cols = starts_with("crit_"),
+               names_to = "criterion",
+               values_to = "value")
+
+crit_plot <- ggplot(crit_long, aes(x = value)) +
+  geom_histogram(bins = 30, fill = "steelblue", color = "white") +
+  facet_wrap(~criterion, scales = "free", ncol = 3) +
+  theme_classic(base_size = 16) +
+  labs(x = NULL, y = "Count") +
+  scale_y_continuous(expand = c(0,0)) +
+  theme(
+    strip.text = element_text(size = 16),
+    axis.text = element_text(size = 14)
+  )
+crit_plot
+
+#ggsave("crit_distribution.tiff", dpi=300, width=8, height=17)
 
 
-# Create individual plots for each code line
+# Create individual plots for each component
 plotA <- ggplot(df) +
   geom_histogram(aes(x = adaptive_capacity_scaled), na.rm = TRUE, bins = 30) +
   #color_scale +
@@ -975,7 +1031,7 @@ plotD <- ggplot(df) +
 
 A_plot <- plot_grid(plotB, plotC, plotA, ncol = 3)
 A_plot
-ggsave("histograms.tiff", dpi=300, width=15, height=3)
+
 
 plot1 <- ggplot(df) +
   geom_col(aes(x = fct_reorder(country_ISO_alpha3, adaptive_capacity_scaled), 
@@ -1028,7 +1084,7 @@ A_plot / B_plot +plot_layout(heights=c(1,4))
 
 
 
-ggsave("subindex_distribution.tiff", dpi=300, width=5, height=15)
+ggsave("component_distribution.tiff", dpi=300, width=8, height=17)
 
 
 
