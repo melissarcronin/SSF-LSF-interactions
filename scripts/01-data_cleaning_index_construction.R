@@ -1,5 +1,5 @@
 ###############################################################################
-# SSF Dependence Country Prioritization using IHH Data
+# 01 Data cleaning and variable standardization
 # 
 # Description: 
 #   This script cleans and standardizes all SIFI Index data and constructs the SIFI Index.
@@ -10,16 +10,11 @@
 # Last Updated: 2025-09-24
 #
 # Inputs:
-#   - data/raw/ihh_data.csv
-#   - data/processed/country_metadata.csv
-#
-# Outputs:
-#   - data/processed/TKTK .csv
-#   - outputs/figures/TKTK
+
 #
 # Run Order:
 #   This is script 01 in the workflow:
-#     01_data_cleaning.R  →  02_analysis_and_visualization.R
+#     01_data_cleaning.R  →  02_analysis_and_visualization.R → 03_Sensitity_mediation_analyses → 04_Bright_spot_analyses
 ###############################################################################
 
 # Load Required Libraries
@@ -30,10 +25,10 @@ rm(list = ls())  # Clear environment to avoid conflicts
 # --- 2. Install and Load Packages -------------------------------------------
 required_packages <- c("here",
   # Data manipulation
-  "dplyr", "tidyr", "forcats", "countrycode","stringr",
+  "dplyr", "tidyr", "forcats", "countrycode","stringr", "countrycode","reshape2",
   
   # Visualization
-  "ggplot2", "viridis", "ggrepel", "scico", "patchwork", "cowplot",
+  "ggplot2", "viridis", "ggrepel", "scico", "patchwork", "cowplot","RColorBrewer",
   
   # Mapping
   "sf", "rnaturalearth", "rnaturalearthdata", "cartogram", 
@@ -77,72 +72,79 @@ color_scale <- scale_fill_viridis_c(
 
 ### 1_1 Construct composite index of intensity of nearshore large-scale fishing activity 3####
 
-# 1. Read CSV 
+#1. Read CSV
 gfw_data <- read.csv(
-  here("data", "gfw_fishing_SAR_matched.csv")) %>%  
-  filter(country_name!="") %>% #remove eez null fishing
-  dplyr::select(country_name, matched_fishing, unmatched_fishing)
+  here("data", "activity_close_to_shore.csv")) %>%
+  filter(dist_km == 25) %>%
+  filter(ISO_TER1 != "") %>%  # remove EEZ-null fishing
+  dplyr::select(
+    ISO_TER1,
+    area_km2,        
+    ais_fishing,
+    dark_fishing
+  ) %>%
+  rename(Alpha.3.code = ISO_TER1,
+         nonbroadcasting_fishing =dark_fishing) %>%
+  group_by(Alpha.3.code) %>%  # area is constant per country
+  summarise(
+    area_km2=sum(area_km2),
+    ais_fishing   = sum(ais_fishing,   na.rm = TRUE),
+    nonbroadcasting_fishing  = sum(nonbroadcasting_fishing,  na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(  # Normalize by coastal area
+    ais_density  = ais_fishing  / area_km2,
+    nonbroadcasting_density= nonbroadcasting_fishing / area_km2
+  )
 
-#1_1_A AIS-braodcasting fishing density
+# Convert each country’s density into a *share of global density*.
+total_ais_density  <- sum(gfw_data$ais_density,  na.rm = TRUE)
+total_nonbroadcasting_density <- sum(gfw_data$nonbroadcasting_density, na.rm = TRUE)
+total_all          <- total_ais_density + total_nonbroadcasting_density
 
-gfw_data$Alpha.3.code <- countrycode(gfw_data$country_name, "country.name", "iso3c")
+ais_share_global  <- total_ais_density  / total_all
+nonbroadcasting_share_global <- total_nonbroadcasting_density / total_all
 
-countries_subset <- c( #the package missed.a few codes, so manually input them 
-  "Bonaire" = "BES",
-  "Saint Martin" = "MAF") 
+cat("Global AIS share:  ", round(ais_share_global  * 100, 2), "%\n")
+cat("Global NONBROADCASTING share: ", round(nonbroadcasting_share_global * 100, 2), "%\n")
 
-#create crit_1_1_A : Matched LSF density AIS-matched vessel detections
-
-crit_1_1_A_data <- gfw_data %>%
-  mutate(Alpha.3.code = if_else(country_name %in% names(countries_subset), 
-                                countries_subset[country_name], 
-                                Alpha.3.code)) %>% 
-  rename(crit_1_1_A_raw= matched_fishing) %>% 
-  mutate(crit_1_1_A_log  = log(crit_1_1_A_raw+1)) %>% 
-  mutate(crit_1_1_A  =scales::rescale(crit_1_1_A_log ))
-
-crit_1_1_A_histogram<-crit_1_1_A_data %>% 
-  ggplot()+
-  geom_histogram(aes(x=crit_1_1_A))
-
-
-
-#create crit_1_1_B : Non-matched (eg non-broadcasting) LSF density vessel detections
-# LSF fishing activity that is not publicly tracked (AIS activity is missing from public monitoring systems) 
-
-crit_1_1_B_data <- gfw_data %>%
-  mutate(Alpha.3.code = if_else(country_name %in% names(countries_subset), 
-                                countries_subset[country_name], 
-                                Alpha.3.code)) %>% 
-  rename(crit_1_1_B_raw= unmatched_fishing) %>% 
-  mutate(crit_1_1_B_log  = log(crit_1_1_B_raw+1)) %>% 
-  mutate(crit_1_1_B  =scales::rescale(crit_1_1_B_log ))
+crit_1_1_data <- gfw_data %>%
+  mutate(country_name = countrycode(Alpha.3.code, "iso3c", "country.name")) %>%
+  mutate(
+    ais_prop  = ais_density  / total_ais_density,
+    nonbroadcasting_prop = nonbroadcasting_density / total_nonbroadcasting_density
+  ) %>%
+  # create raw log-transformed components
+  mutate(
+    crit_1_1_A_raw = log(ais_prop + 1e-6),
+    crit_1_1_B_raw = log(nonbroadcasting_prop + 1e-6)
+  ) %>%
+  # rescale each sub-indicator 
+  mutate(
+    crit_1_1_A = scales::rescale(crit_1_1_A_raw),
+    crit_1_1_B = scales::rescale(crit_1_1_B_raw)
+  ) %>%
+  # combine A and B into the overall crit_1_1 using global weights
+  mutate(
+    crit_1_1_raw = crit_1_1_A * ais_share_global +
+      crit_1_1_B * nonbroadcasting_share_global,
+    crit_1_1     = scales::rescale(crit_1_1_raw)
+  )
 
 
-crit_1_1_B_data %>% 
-ggplot()+
-  geom_histogram(aes(x=crit_1_1_B))
-
-#create crit_1_1 : LSF density: mean (AIS-matched and non-matched vessel detections)
-crit_1_1_data<- crit_1_1_A_data %>% 
-  left_join(crit_1_1_B_data, by = c("Alpha.3.code", "country_name")) %>%
-  as.data.frame() %>% 
-  drop_na() %>% 
-  mutate(crit_1_1 = rowMeans(dplyr::select(.,crit_1_1_A, crit_1_1_B) )) 
-  
-
-crit_1_1_histogram<-crit_1_1_data %>% 
+crit_1_1_data %>%
   ggplot()+
   geom_histogram(aes(x=crit_1_1))
 
 shapiro.test(crit_1_1_data$crit_1_1)
 
-cor(crit_1_1_data$crit_1_1_A_raw,crit_1_1_data$crit_1_1_B_raw, ) #check correlation between LSF variables
-
 ### 1_2_A Contribution to global marine SSF production (scaled to nearshore area , IHH) #####
 #Description: Percent contribution of countries’ small-scale fisheries production to global small-scale fisheries production
 
-#first, need a calculation of square km of area within 25km for every country, using a buffer created in GIS
+##### First, VISUALS #######
+#Visualize the square km of area within 25km for every country, using a buffer created in GIS
+##this is just for visuals! We use the GFW-calculated area for 25km from shore to standardize between crit_1_1 and crit_1_2
+
 # World polygons from the maps package
 world_shp <- sf::st_as_sf(maps::map("world", plot = F, fill = TRUE))
 
@@ -260,6 +262,7 @@ coastal_buffer_final<- coastal_buffer_joined %>%
 coastal_buffer_df<- coastal_buffer_final %>% 
   st_drop_geometry()
 
+#this is just for visuals. We use the GFW-calculated area for 25km from shore to standardize between crit_1_1 and crit_1_2
 #write.csv(coastal_buffer_df, "coastal_buffer_iso.csv")
 
 ggplot() +
@@ -269,122 +272,127 @@ ggplot() +
   labs( color="Nearshore area (km^2)") +
   theme_classic()
 
-
-#now add ssf catch data, to be scaled relative to nearshore area for each country
+#####Calculate SSF catch scaled relative to nearshore area for each country ###########
 #THIS DATA IS CONFIDENTIAL AND CANNOT BE SHARED. Calculation details remain here to clarify how the data was used in the analysis.  
 
 ssf_catch<- read.csv("ssf_catch.csv", sep=",", header=TRUE) %>% 
   filter(Marine_Inland_char=="Marine") %>% 
-  group_by(country, country_ISO_alpha3) %>% 
+  rename( Alpha.3.code=country_ISO_alpha3) %>% 
+  group_by(country, Alpha.3.code) %>% 
   slice_head(n=1) %>%
-  dplyr::select(country,national_catch_final ) %>% 
+  dplyr::select(Alpha.3.code,country,national_catch_final ) %>% 
   ungroup() %>% 
   drop_na()
 
 ssf_catch$national_catch_final<-round(ssf_catch$national_catch_final)
 
-nearshore_area<-coastal_buffer_final %>%  rename(country_ISO_alpha3=iso_code)
+# gfw_data already contains the correct area_km2 from the nearshore fishing calc
+gfw_area <- gfw_data %>%  
+  dplyr::select(Alpha.3.code, area_km2)  # pull only the area field
 
-ssf_catch_area<- ssf_catch %>% 
-  left_join( nearshore_area, by ="country_ISO_alpha3")
+# Join SSF catch to GFW area
+ssf_catch_area <- ssf_catch %>% 
+  left_join(gfw_area, by = "Alpha.3.code" )%>%  drop_na()
 
 crit_1_2_data<- ssf_catch_area %>% 
-  mutate(catch_per_area= log(national_catch_final)/log(sum_area)) %>% 
+  mutate(catch_per_area= log(national_catch_final)/log(area_km2)) %>% 
   rename(crit_1_2_raw= catch_per_area) %>% 
   mutate( crit_1_2 = scales::rescale(crit_1_2_raw, to = c(0, 1)) )%>% 
-  rename(Alpha.3.code=country_ISO_alpha3) %>% 
   filter(crit_1_2!="NA")
 
 # Plot a histogram of normalized_crit_2_1_A
 crit_1_2_histogram<-ggplot(crit_1_2_data) +
   geom_histogram(aes(x = crit_1_2)) 
 
-crit_1_2_df<- crit_1_2_data %>% 
-  st_drop_geometry() %>% 
-  dplyr::select(-geometry)
-
-shapiro.test(crit_1_2_df$crit_1_2)
+shapiro.test(crit_1_2_data$crit_1_2)
 
 ### Aggregate exposure variables #####
 
 ### CALCULATE EXPOSURE ######
 
-exposure_data_df<- crit_1_1_data %>% 
-  left_join(crit_1_2_data, by =c( "Alpha.3.code")) %>% 
+exposure_data<- crit_1_1_data %>% 
+  left_join(crit_1_2_data, by =c( "Alpha.3.code","area_km2")) %>% 
   drop_na() %>% 
   mutate(exposure_raw = rowMeans(dplyr::select(., crit_1_1, crit_1_2 ), na.rm = TRUE)) %>% 
   mutate(exposure_scaled=scales::rescale(exposure_raw)) %>% 
   dplyr::select(Alpha.3.code,
-                #country, hours, vessel_density,
-                #crit_1_1_raw,crit_1_1_A_raw,crit_1_1_B_raw, crit_1_2_raw, 
-                crit_1_1,crit_1_1_A,crit_1_1_B, crit_1_2 ,exposure_scaled, exposure_raw) 
+            crit_1_1, crit_1_1_A, crit_1_1_B, crit_1_2 ,exposure_scaled) 
 
-shapiro.test(exposure_data_df$exposure_raw)
+shapiro.test(exposure_data$exposure_scaled)
 
-ggplot(exposure_data_df) +
-  geom_histogram(aes(x = exposure_raw)) 
-
-joined_exp  <- merge(exposure_data_df, world_shp_df, by = "Alpha.3.code")
-exposure_data<- st_as_sf(joined_exp) 
+ggplot(exposure_data) +
+  geom_histogram(aes(x = exposure_scaled)) 
 
 #check correlations
-cor(exposure_data_df$crit_1_1_A,exposure_data_df$exposure_raw)
+cor(exposure_data$crit_1_1,exposure_data$exposure_scaled)
 
-ggplot(exposure_data_df) +
-  geom_col(aes(x = fct_reorder(Alpha.3.code, exposure_scaled), y = crit_1_1), fill = "pink", position = "dodge") +
+ggplot(exposure_data) +
   geom_col(aes(x = fct_reorder(Alpha.3.code, exposure_scaled), y = -crit_1_2), fill = "blue", position = "dodge") +
+  geom_col(aes(x = fct_reorder(Alpha.3.code, exposure_scaled), y = crit_1_1), fill = "pink", position = "dodge") +
   geom_col(aes(x = fct_reorder(Alpha.3.code, exposure_scaled), y = exposure_scaled) ,fill = "green", position = "dodge") +
   coord_flip()
 
-ggplot(exposure_data_df) +
+ggplot(exposure_data) +
   geom_point(aes(x =  crit_1_1, y = crit_1_2, color = exposure_scaled ))
   
 
-sf_palette <- viridis::viridis(7, option = "inferno", direction=-1)
 
-exposure_map<-exposure_data %>% 
+# join exposure data onto world geometry
+world_exposure <- world_shp_df %>%
+  left_join(exposure_data, by = "Alpha.3.code")
+
+#ais broadcasting map
+world_exposure %>% 
   ggplot() +
   geom_sf(data=world_shp, fill="lightgrey", color="white")+
-  geom_sf(data=exposure_data, aes( fill= exposure_scaled), color="lightgrey") +
-  scale_fill_gradientn(colors = sf_palette  )+ 
-  labs(title = "Exposure") +
-  theme(legend.position="top")+
-  theme_classic()
-
-
-
-A<-exposure_data %>% 
-  ggplot() +
-  geom_sf(data=world_shp, fill="lightgrey", color="white")+
-  geom_sf(data=exposure_data, aes( fill= crit_1_1_A), color="lightgrey") +
+  geom_sf( aes( fill= crit_1_1_A), color="lightgrey") +
   scale_fill_viridis_c(option="magma", direction=-1,  limits=c(0,1), breaks=c(0,0.5,1))+
-  labs( fill="Nearshore density of matched vessels (broadcasting AIS)") +
+  labs( fill="Nearshore density of AIS-broadcasting vessels") +
+  theme_classic()+
+  theme(legend.position="top",
+        legend.key.size = unit(0.5, "cm"))
+
+#non broadcasting map
+world_exposure %>% 
+  ggplot() +
+  geom_sf(data=world_shp, fill="lightgrey", color="white")+
+  geom_sf( aes( fill= crit_1_1_B), color="lightgrey") +
+  scale_fill_viridis_c(option="magma", direction=-1,  limits=c(0,1), breaks=c(0,0.5,1))+
+  labs( fill="Nearshore density of non-broadcasting vessels") +
+  theme_classic()+
+  theme(legend.position="top",
+        legend.key.size = unit(0.5, "cm"))
+
+
+
+A<-  world_exposure %>% 
+  ggplot() +
+  geom_sf(data=world_shp, fill="lightgrey", color="white")+
+  geom_sf( aes( fill= crit_1_1), color="lightgrey") +
+  scale_fill_viridis_c(option="magma", direction=-1,  limits=c(0,1), breaks=c(0,0.5,1))+
+  labs( fill="Nearshore density of LSF") +
   theme_classic()+
   theme(legend.position="top",
         legend.key.size = unit(0.5, "cm"))
 A
-B<-exposure_data %>% 
+B<-  world_exposure %>% 
   ggplot() +
   geom_sf(data=world_shp, fill="lightgrey", color="white")+
-  geom_sf(data=exposure_data, aes( fill= crit_1_1_B), color="lightgrey") +
-  scale_fill_viridis_c(option="magma", direction=-1, limits=c(0,1), breaks=c(0,0.5,1))+
-  labs( fill= "Nearshore density of unmatched vessels (not broadcasting AIS)") +
-  theme_classic()+
-  theme(legend.position="top",
-        legend.key.size = unit(0.5, "cm"))  # Adjust plot margins
- 
-B
-
-C<-exposure_data %>% 
-  ggplot() +
-  geom_sf(data=world_shp, fill="lightgrey", color="white")+
-  geom_sf(data=exposure_data, aes( fill= crit_1_2), color="lightgrey") +
+  geom_sf(aes( fill= crit_1_2), color="lightgrey") +
   scale_fill_viridis_c(option="magma", direction=-1,limits=c(0,1), breaks=c(0,0.5,1))+
   labs(fill="SSF catch (kg) / nearshore area km^2") +
   theme_classic()+  
   theme(legend.position="top")
-C
-(A/B)+ C
+B
+C<-  world_exposure %>% 
+  ggplot() +
+  geom_sf(data=world_shp, fill="lightgrey", color="white")+
+  geom_sf( aes( fill= exposure_scaled), color="lightgrey") +
+  scale_fill_viridis_c(option="magma", direction=-1,limits=c(0,1), breaks=c(0,0.5,1))+
+  labs(fill="Exposure") +
+  theme_classic()+  
+  theme(legend.position="top")
+A+B+C
 
 #ggsave("Fig_2_exposure.tiff", dpi=300, height=4, width=18)
 
@@ -399,7 +407,6 @@ reshaped_exposure_data <- exposure_data %>%
 
 
 exposure_means<-ggplot(reshaped_exposure_data, aes(x = variable, y = mean)) +
-  #geom_boxplot(position = position_dodge(0.8), alpha = 0.5, width = 0.6) +
   geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd), width = 0.2, position = position_dodge(0.8)) +
   theme_classic()  +
   labs(title="Exposure")+
@@ -422,7 +429,8 @@ exposure_means
 ### 2_1_A Contribution to SSF marine fisheries landed value (% of global marine SSF landed value, IHH) ######
 landed_value_data<-read.csv(
   here("data", "landed_value_ssf.csv"),
-  stringsAsFactors = FALSE)
+  stringsAsFactors = FALSE) %>% 
+  rename(Alpha.3.code=country_ISO_alpha3 )
 
 crit_2_1_A_data<- landed_value_data %>%  #this comes from "Global_SSF_LV" from IHH core datasets
   mutate(global_landed_value=sum(landed_value)) %>% 
@@ -441,11 +449,12 @@ crit_2_1_A_histogram<-ggplot(crit_2_1_A_data) +
 #Description: Percent contribution of number of fishers by country to global employment in fisheries
 employment_data<- read.csv(  
   here("data", "employment_ssf.csv"),
-  stringsAsFactors = FALSE)
+  stringsAsFactors = FALSE) %>%  
+  rename(Alpha.3.code=country_ISO_alpha3 )
 
 
 crit_2_1_B_data<-employment_data %>% 
-  dplyr::select(country,country_ISO_alpha3 ,   harvest_marine_SSF, harvest_marine_LSF) %>% 
+  dplyr::select(country,Alpha.3.code ,   harvest_marine_SSF, harvest_marine_LSF) %>% 
   mutate(fishers= harvest_marine_LSF+ harvest_marine_SSF) %>% 
   mutate(global_fishers=sum(fishers)) %>% 
   mutate(crit_2_1_B_raw =fishers/global_fishers) %>% 
@@ -464,13 +473,14 @@ crit_2_1_B_histogram<-ggplot(crit_2_1_B_data) +
 #Percent contribution of marine SSF fishers to total country labour force 
 
 ssf_employment<-employment_data %>% 
-  dplyr::select(country,country_ISO_alpha3 ,   harvest_marine_SSF)
+  dplyr::select(country,Alpha.3.code ,   harvest_marine_SSF)
 
 ssf_employment$harvest_marine_SSF<-as.numeric(ssf_employment$harvest_marine_SSF)
 
 labor_data<- read.csv( 
   here("data", "world_bank_employment_data.csv"),
-  stringsAsFactors = FALSE)
+  stringsAsFactors = FALSE) %>% 
+  rename(Alpha.3.code=Country.Code )
 
 global_employment<- labor_data %>% 
   mutate(employment_mean_raw=rowMeans(dplyr::select(., X2013: X2017) )) %>% 
@@ -499,7 +509,7 @@ shapiro.test(crit_2_1_C_data$crit_2_1_C)
 #Percent contribution of number of marine subsistence fishers by country to global marine subsistence fishers
 
 crit_2_1_D_data<-employment_data%>% 
-  dplyr::select(country,country_ISO_alpha3 ,   Marine_harvest_WOC_SSF ) %>% 
+  dplyr::select(country,Alpha.3.code ,   Marine_harvest_WOC_SSF ) %>% 
   mutate(subsistence_fishers= Marine_harvest_WOC_SSF) %>% 
   drop_na(subsistence_fishers) %>% 
   filter(subsistence_fishers!=0) %>% 
@@ -521,21 +531,21 @@ shapiro.test(crit_2_1_D_data$crit_2_1_D)
 
 #Compile 2_1 employment data 
 crit_2_1_data <-crit_2_1_A_data %>% 
-  left_join(crit_2_1_B_data, by =c( "country_ISO_alpha3")) %>% 
-  left_join(crit_2_1_C_data, by =c( "country_ISO_alpha3")) %>% 
-  left_join(crit_2_1_D_data, by =c( "country_ISO_alpha3")) %>% 
+  left_join(crit_2_1_B_data, by =c( "Alpha.3.code")) %>% 
+  left_join(crit_2_1_C_data, by =c( "Alpha.3.code")) %>% 
+  left_join(crit_2_1_D_data, by =c( "Alpha.3.code")) %>% 
   mutate(Subregion = countrycode(
-    country_ISO_alpha3, 
+    Alpha.3.code, 
     origin = "iso3c", 
     destination = "un.regionsub.name"), #assign region for imputing later
-    Subregion = ifelse(country_ISO_alpha3 == "TWN", "Eastern Asia", Subregion)
+    Subregion = ifelse(Alpha.3.code == "TWN", "Eastern Asia", Subregion)
   ) %>%
   mutate(Continent = countrycode(
-    country_ISO_alpha3, 
+    Alpha.3.code, 
     origin = "iso3c", 
     destination = "continent") #assign region for imputing later
   ) %>%
-  dplyr::select(country_ISO_alpha3, Subregion,Continent,
+  dplyr::select(Alpha.3.code, Subregion,Continent,
                 crit_2_1_A,
                 crit_2_1_B,
                 crit_2_1_C,
@@ -549,10 +559,11 @@ crit_2_1_data <-crit_2_1_A_data %>%
 
 coastal_population<-read.csv( 
   here("data", "coastal_population.csv"),
-  stringsAsFactors = FALSE)
+  stringsAsFactors = FALSE) %>% 
+  rename(Alpha.3.code =country_ISO_alpha3)
 
 crit_2_2_A_data<- ssf_catch %>% 
-  dplyr::left_join(coastal_population, by = c("country_ISO_alpha3") ) %>% 
+  dplyr::left_join(coastal_population, by = c("Alpha.3.code") ) %>% 
   filter(coastal_population!=0) %>% 
   mutate(ssf_catch_kg = national_catch_final * 1000) %>% 
   mutate(crit_2_2_A_raw= ssf_catch_kg/coastal_population ) %>% 
@@ -565,11 +576,6 @@ crit_2_2_A_histogram<-ggplot(crit_2_2_A_data) +
 
 #2.2_B Quality: Nutrient supply of catch (iron, zinc, calcium, vitamin A) for coastal residents [compiled domestic proportions that would meet 25% RDI for coastal population]
 
-nutrition_data <-read.csv( 
-  here("data", "coastal_population.csv"),
-  stringsAsFactors = FALSE)
-
-
 nutrition_data<-  read.csv( 
     here("data", "nutrition_data.csv"),
     stringsAsFactors = FALSE) %>% 
@@ -579,11 +585,10 @@ nutrition_data<-  read.csv(
     origin = "iso3c",
     destination = "continent"
   )) %>% 
-  dplyr::rename(country_ISO_alpha3 = country)
-
+  rename(Alpha.3.code =country)
 
 crit_2_2_B_data<- nutrition_data %>% 
-  dplyr::left_join(coastal_population, by = c("country_ISO_alpha3") ) %>% 
+  dplyr::left_join(coastal_population, by = c("Alpha.3.code") ) %>% 
   mutate(crit_2_2_B_raw= pop/coastal_population ) %>% 
   filter(crit_2_2_B_raw!="Inf") %>% 
   mutate(crit_2_2_B_log = log(crit_2_2_B_raw+1) ) %>%  
@@ -597,14 +602,13 @@ crit_2_2_B_histogram<-ggplot(crit_2_2_B_data) +
 shapiro.test(crit_2_2_B_data$crit_2_2_B)
 
 
-
 ### 2_2_C Prevalence of inadequate micronutrient intake (PMII) for 14 micronutrients  ######
 #Prevalence of inadequate micronutrient intake  (Beale et al 2017) 
 
 crit_2_2_C_data<-read.csv( 
   here("data", "prevalence_micronutrient_deficiency.csv"), stringsAsFactors = FALSE) %>% 
-                           rename(country_ISO_alpha3=ISO3) %>% 
-  dplyr::select(country_ISO_alpha3 ,  PIMII.without.Fortification) %>% 
+                           rename(Alpha.3.code=ISO3) %>% 
+  dplyr::select(Alpha.3.code,  PIMII.without.Fortification) %>% 
   rename(crit_2_2_C_raw =PIMII.without.Fortification) %>% 
   mutate(crit_2_2_C_log=log(crit_2_2_C_raw+1)) %>% 
   mutate(crit_2_2_C = scales::rescale(crit_2_2_C_log) ) 
@@ -618,20 +622,20 @@ shapiro.test(crit_2_2_C_data$crit_2_2_C)
 
 ### Aggregate 2_2 variables ######
 crit_2_2_data <-crit_2_2_A_data %>%
-  left_join(crit_2_2_B_data, by =c( "country_ISO_alpha3")) %>%
-  left_join(crit_2_2_C_data, by =c( "country_ISO_alpha3")) %>%
+  left_join(crit_2_2_B_data, by =c( "Alpha.3.code")) %>%
+  left_join(crit_2_2_C_data, by =c( "Alpha.3.code")) %>%
   mutate(Subregion = countrycode(
-    country_ISO_alpha3, 
+    Alpha.3.code, 
     origin = "iso3c", 
     destination = "un.regionsub.name"), #assign region for imputing later
-    Subregion = ifelse(country_ISO_alpha3 == "TWN", "Eastern Asia", Subregion)
+    Subregion = ifelse(Alpha.3.code== "TWN", "Eastern Asia", Subregion)
   ) %>%
   mutate(Continent = countrycode(
-    country_ISO_alpha3, 
+    Alpha.3.code, 
     origin = "iso3c", 
     destination = "continent") #assign region for imputing later
   ) %>%
-  dplyr::select(country_ISO_alpha3, Subregion,Continent,
+  dplyr::select(Alpha.3.code, Subregion,Continent,
                 crit_2_2_A_raw,
                 crit_2_2_B_raw,
                 crit_2_2_C_raw,
@@ -645,8 +649,8 @@ crit_2_2_data <-crit_2_2_A_data %>%
 
 ### CALCULATE SENSITIVYTY INDEX (before imputation, see below). We don't impute here because we want to have all the other data for possible countries based on data availability for exposure and adaptive capacity #####
 sensitivity_data_original<- crit_2_1_data %>% 
-  left_join(crit_2_2_data, by =c( "country_ISO_alpha3", "Continent", "Subregion"))  %>% 
-  dplyr::select(country_ISO_alpha3, Continent, Subregion,
+  left_join(crit_2_2_data, by =c( "Alpha.3.code", "Continent", "Subregion"))  %>% 
+  dplyr::select(Alpha.3.code, Continent, Subregion,
          
                 crit_2_1_A,
                 crit_2_1_B,
@@ -670,7 +674,8 @@ sensitivity_data_original<- crit_2_1_data %>%
 hdi<-read.csv( 
   here("data", "hdi_time_series.csv"),
   stringsAsFactors = FALSE) %>% 
-  dplyr::select(country_ISO_alpha3, country,
+  rename(Alpha.3.code=country_ISO_alpha3) %>% 
+  dplyr::select(Alpha.3.code, country,
                 hdi_2013, hdi_2014, hdi_2015, hdi_2017, hdi_2017)
 
 crit_3_1_data<-hdi %>% 
@@ -690,8 +695,9 @@ shapiro.test(crit_3_1_data$crit_3_1)
 governance<-read.csv( 
   here("data", "governance_data.csv"),
   stringsAsFactors = FALSE) %>% 
-  filter(country_ISO_alpha3!="") %>% 
-  dplyr::select(country_ISO_alpha3, corruption, gov_effectiveness, political_stability, regulatory_quality, rule_of_law, voice_accountability) %>% 
+  rename(Alpha.3.code=country_ISO_alpha3) %>% 
+  filter(Alpha.3.code!="") %>% 
+  dplyr::select(Alpha.3.code, corruption, gov_effectiveness, political_stability, regulatory_quality, rule_of_law, voice_accountability) %>% 
   mutate_at(vars(corruption, gov_effectiveness, political_stability, regulatory_quality, rule_of_law, voice_accountability),
             ~ ifelse(. == "ND", NA, as.numeric(.))  ) %>% 
   rename(crit_3_2_A_raw=  corruption,
@@ -725,7 +731,7 @@ shapiro.test(crit_3_2_data$crit_3_2)
 
 ### CALCULATE ADAPTIVE CAPACITY #####
 adaptive_capacity_data<- crit_3_1_data %>% 
-  left_join(crit_3_2_data, by =c( "country_ISO_alpha3"))  %>% 
+  left_join(crit_3_2_data, by =c( "Alpha.3.code"))  %>% 
   mutate(adaptive_capacity_raw = rowSums(dplyr::select(., 
                                                     crit_3_1_raw,
                                                     crit_3_2_raw
@@ -736,7 +742,7 @@ adaptive_capacity_data<- crit_3_1_data %>%
   ), na.rm = TRUE)) %>% 
   mutate(adaptive_capacity_log=log(adaptive_capacity+1)) %>% 
   mutate(adaptive_capacity=scales::rescale(adaptive_capacity_log)) %>% 
-  dplyr::select(country_ISO_alpha3,adaptive_capacity,adaptive_capacity_raw, adaptive_capacity_log, 
+  dplyr::select(Alpha.3.code,adaptive_capacity,adaptive_capacity_raw, adaptive_capacity_log, 
                 crit_3_1_raw, crit_3_2_raw,crit_3_2_A_raw, crit_3_2_B_raw,crit_3_2_C_raw, crit_3_2_D_raw,crit_3_2_E_raw, crit_3_2_F_raw,
                 crit_3_1, crit_3_2,crit_3_2_A, crit_3_2_B,crit_3_2_C, crit_3_2_D,crit_3_2_E, crit_3_2_F)
 
@@ -759,7 +765,7 @@ shapiro.test(adaptive_capacity_data$adaptive_capacity)
 
 
 reshaped_adaptive_capacity_data <- adaptive_capacity_data %>%
-  gather(key = "variable", value = "value", -country_ISO_alpha3) %>%
+  gather(key = "variable", value = "value", -Alpha.3.code) %>%
   group_by(variable) %>%
   summarise(mean = mean(value, na.rm = TRUE), sd = sd(value, na.rm = TRUE))
 
@@ -770,12 +776,6 @@ adaptive_capacity_means<- ggplot(reshaped_adaptive_capacity_data, aes(x = variab
   labs(title="Adaptive Capacity")+
   scale_y_continuous(limits=c(-0.2, 1))+
  theme(axis.text.x = element_text(angle = 45, hjust = 1))
-
-
-
-#exposure_means + sensitivity_means + adaptive_capacity_means
-
-#ggsave("subindex_means.tiff", dpi=300, width=10, height=5)
 
 
 #################################################################################
@@ -844,7 +844,7 @@ crit_2_2_data <-crit_2_2_data_complete %>%
   mutate( crit_2_2= scales::rescale(crit_2_2))
 
 sensitivity_data <- crit_2_1_data %>%
-  inner_join(crit_2_2_data,by = c("country_ISO_alpha3", "Continent", "Subregion")) %>%
+  inner_join(crit_2_2_data,by = c("Alpha.3.code", "Continent", "Subregion")) %>%
   mutate(
     sensitivity = rowMeans(dplyr::select(., crit_2_1, crit_2_2), na.rm = TRUE)
   )
@@ -858,13 +858,13 @@ crit_cols <- c("crit_2_1_A","crit_2_1_B","crit_2_1_C","crit_2_1_D",
 
 sensitivity_combined <- sensitivity_data %>%
   inner_join(
-    sensitivity_data_original %>% dplyr::select(country_ISO_alpha3, Continent, all_of(crit_cols)),
-    by = c("country_ISO_alpha3","Continent"),
+    sensitivity_data_original %>% dplyr::select(Alpha.3.code, Continent, all_of(crit_cols)),
+    by = c("Alpha.3.code","Continent"),
     suffix = c("_final","_orig")
   )
 
 imputed_countries <- sensitivity_combined %>%
-  dplyr::select(country_ISO_alpha3, Continent,
+  dplyr::select(Alpha.3.code, Continent,
          crit_2_1_A_orig, crit_2_1_B_orig, crit_2_1_C_orig, crit_2_1_D_orig,
          crit_2_2_A_orig, crit_2_2_B_orig, crit_2_2_C_orig) %>%
   pivot_longer(
@@ -875,7 +875,7 @@ imputed_countries <- sensitivity_combined %>%
   filter(is.na(value)) %>%  # keep only originally missing
   mutate(criterion = gsub("_orig", "", criterion)) %>%
   group_by(Continent, criterion) %>%
-  summarize(countries = paste(country_ISO_alpha3, collapse = ", "), .groups = "drop")
+  summarize(countries = paste(Alpha.3.code, collapse = ", "), .groups = "drop")
 
 
 #imputation was only done for 2_2_C; all other countries were removed for too much missing data. 
@@ -889,14 +889,12 @@ imputed_countries <- sensitivity_combined %>%
 
 ######## MERGE 3 INDICES  ###########################
 #put all criteria together in one df
-exposure_data_df<- exposure_data_df %>%  rename(country_ISO_alpha3= Alpha.3.code)
 
-
-all_components <- exposure_data_df %>% 
-  left_join(sensitivity_data, by =c( "country_ISO_alpha3")) %>% 
-  left_join(adaptive_capacity_data, by =c( "country_ISO_alpha3")) %>% 
+all_components <- exposure_data %>% 
+  left_join(sensitivity_data, by =c( "Alpha.3.code")) %>% 
+  left_join(adaptive_capacity_data, by =c( "Alpha.3.code")) %>% 
   mutate(Continent = countrycode(
-    country_ISO_alpha3, 
+    Alpha.3.code, 
     origin = "iso3c", 
     destination = "continent"
   )) %>% 
@@ -914,8 +912,7 @@ all_cols <- c(
   # main indices
   "exposure_scaled", "sensitivity_scaled", "adaptive_capacity_inverse_scaled",
   # sub-criteria
-  "crit_1_1_A", "crit_1_1_B",
-  "crit_1_2",
+  "crit_1_1", "crit_1_1_A", "crit_1_1_B", "crit_1_2",
   "crit_2_1_A", "crit_2_1_B", "crit_2_1_C", "crit_2_1_D",
   "crit_2_2_A", "crit_2_2_B", "crit_2_2_C",
   "crit_3_1", 
@@ -923,7 +920,7 @@ all_cols <- c(
 )
 
 # Create summary table
-summary_table <- df %>%
+summary_table <- all_components %>%
   dplyr::select(all_of(all_cols)) %>%
   pivot_longer(everything(), names_to = "Variable", values_to = "Value") %>%
   group_by(Variable) %>%
@@ -941,7 +938,7 @@ write.csv(summary_table, "variable_summaries.csv")
 
 #check simple methods of producing the SIFI Index
 df <- all_components %>%
-  group_by(country_ISO_alpha3) %>%
+  group_by(Alpha.3.code) %>%
   mutate(   overall_index_sum =( exposure_scaled + sensitivity_scaled + adaptive_capacity_inverse_scaled), 
             
             overall_index_prod = (prod(c(exposure_scaled , sensitivity_scaled + adaptive_capacity_inverse_scaled))),
@@ -957,7 +954,7 @@ df <- all_components %>%
     index_mean_scaled = scales::rescale(log(overall_index_mean+1), to = c(0, 1))
   ) 
 
-
+write.csv(df, "data/SIFI_Index_data.csv")
 
 #PLOT DISTRIBUTIONS ######
 
@@ -1034,7 +1031,7 @@ A_plot
 
 
 plot1 <- ggplot(df) +
-  geom_col(aes(x = fct_reorder(country_ISO_alpha3, adaptive_capacity_scaled), 
+  geom_col(aes(x = fct_reorder(Alpha.3.code, adaptive_capacity_scaled), 
                y = adaptive_capacity_scaled, 
                fill = adaptive_capacity_scaled)) +
   color_scale +
@@ -1045,7 +1042,7 @@ plot1 <- ggplot(df) +
   theme(legend.position="none")
 
 plot2 <- ggplot(df) +
-  geom_col(aes(x = fct_reorder(country_ISO_alpha3, exposure_scaled), 
+  geom_col(aes(x = fct_reorder(Alpha.3.code, exposure_scaled), 
                y = exposure_scaled, 
                fill = exposure_scaled)) +
   color_scale +
@@ -1056,7 +1053,7 @@ plot2 <- ggplot(df) +
   theme(legend.position="none")
 
 plot3 <- ggplot(df) +
-  geom_col(aes(x = fct_reorder(country_ISO_alpha3, sensitivity_scaled), 
+  geom_col(aes(x = fct_reorder(Alpha.3.code, sensitivity_scaled), 
                y = sensitivity_scaled, 
                fill = sensitivity_scaled)) +
   color_scale +
@@ -1067,7 +1064,7 @@ plot3 <- ggplot(df) +
   theme(legend.position="none")
 
 plot4 <- ggplot(df) +
-  geom_col(aes(x = fct_reorder(country_ISO_alpha3, -index_prod_scaled), 
+  geom_col(aes(x = fct_reorder(Alpha.3.code, -index_prod_scaled), 
                y = index_prod_scaled, 
                fill = index_prod_scaled)) +
   color_scale +
@@ -1084,7 +1081,7 @@ A_plot / B_plot +plot_layout(heights=c(1,4))
 
 
 
-ggsave("component_distribution.tiff", dpi=300, width=8, height=17)
+#ggsave("component_distribution.tiff", dpi=300, width=8, height=17)
 
 
 
@@ -1235,8 +1232,6 @@ for (subindex in subindices) {
   sensitivity_results <- rbind(sensitivity_results, data.frame(Subindex = subindex, Correlation = correlation_result))
 }
 
-
-
 sensitivity_plot <- ggplot(sensitivity_results, aes(x = Subindex, y = Correlation, fill = Subindex)) +
   geom_bar(stat = "identity") +
   labs(x = "Subindex", y = "Correlation with Overall Index") +
@@ -1259,7 +1254,7 @@ correlation_data <- as.data.frame(correlation_matrix)
 rownames(correlation_data) <- c("Exposure", "Sensitivity", "Adaptive_Capacity", "Vulnerability")
 colnames(correlation_data) <- c("Exposure", "Sensitivity", "Adaptive_Capacity", "Vulnerability")
 
-library(reshape2)
+
 # Melt the correlation matrix for plotting
 melted_data <- melt(correlation_data)
 melted_data$Var1 <- rownames(correlation_data)  # Add Var1 column with correct names
@@ -1283,215 +1278,4 @@ scale_fill_gradientn(
   theme(text=element_text(size=14))
 
 ggsave("correlation_plot_index.png", dpi=300, height=6, width=7)
-
-##CREATE MAPS ######
-
-world_shp_iso <- world_shp %>%
-  mutate(Alpha.3.code = countrycode(sourcevar = ID, origin = "country.name", destination = "iso3c"))
-
-df<-df %>%  rename(Alpha.3.code =country_ISO_alpha3)
-df_spatial <- merge(world_shp_iso, df,by="Alpha.3.code" )
-
-####
-
-# Create a bar chart of the top 20 ranking exposure countries
-top_20_vulnerability <- df_spatial %>% 
-  arrange(desc(index_mean_scaled)) %>% 
-  slice(1:20)
-
-bar_A <- ggplot(top_20_vulnerability, aes(x = reorder(Alpha.3.code, index_prod_scaled), y = index_prod_scaled, fill=index_prod_scaled)) +
-  geom_bar(stat = "identity") +
-  scale_y_continuous(expand=c(0,0))+
-  coord_flip() +
-  labs(x = NULL, y = "Vulnerability") +
-  color_scale +  # Use the same scale as in the map
-  theme_classic() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
-  theme(legend.position="none")+
-  theme(
-    text = element_text(size = 16),  
-    axis.text = element_text(size = 14) )
-
-bar_A
-
-
-###### EXPOSURE
-
-exposure_map<-
-  ggplot() +
-  geom_sf(data = world_shp , fill = "lightgray", color = "darkgray") +
-  geom_sf(data = df_spatial , aes(fill = exposure_scaled), color = "darkgray") +
-  color_scale + 
-  labs( fill = "Exposure") +
-  theme_bw()+
-  theme(legend.position = "top", legend.text = element_text(size = 8), legend.title = element_text(size = 10))
-
-exposure_map
-
-
-# Create a bar chart of the top 20 ranking exposure countries
-top_20_exposure <- df_spatial %>% 
-  arrange(desc(exposure_scaled)) %>% 
-  slice(1:20)
-
-bar_exposure <- ggplot(top_20_exposure, aes(x = reorder(Alpha.3.code, exposure_scaled), y = exposure_scaled, fill=exposure_scaled)) +
-  geom_bar(stat = "identity") +
-  scale_y_continuous(expand=c(0,0))+
-  coord_flip() +
-  labs(x = NULL, y = "Exposure") +
-  color_scale +  # Use the same scale as in the map
-  theme_classic() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
-  theme(legend.position="none")+
-  theme(
-    text = element_text(size = 16),  
-    axis.text = element_text(size = 14) )
-
-bar_exposure
-
-
-sensitivity_map<-
-  ggplot() +
-  geom_sf(data = world_shp , fill = "lightgray", color = "darkgray") +
-  geom_sf(data=df_spatial, aes(fill =sensitivity_scaled), color = "darkgray") +
-  color_scale+
-  labs( fill = "Sensitivity") +
-  theme_bw()+
-  theme(legend.position = "top", legend.text = element_text(size = 8), legend.title = element_text(size = 10))
-
-sensitivity_map
-
-
-# Create a bar chart of the top 20 ranking countries
-top_20_sensitivity <- df_spatial %>% 
-  arrange(desc(sensitivity_scaled)) %>% 
-  slice(1:20)
-
-sensitivity_bar <- ggplot(top_20_sensitivity, aes(x = reorder(Alpha.3.code, sensitivity_scaled), y = sensitivity_scaled, fill=sensitivity_scaled)) +
-  geom_bar(stat = "identity") +
-  scale_y_continuous(expand=c(0,0))+
-  coord_flip() +
-  labs(x = NULL, y = "Sensitivity") +
-  color_scale +  # Use the same scale as in the map
-  theme_classic() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
-  theme(legend.position="none")+
-  theme(
-    text = element_text(size = 16),  
-    axis.text = element_text(size = 14) )
-  
-sensitivity_bar 
-
-
-adaptive_capacity_map<- ggplot() +
-  geom_sf(data = world_shp , fill = "lightgray", color = "darkgray") +
-  geom_sf(data=df_spatial, aes(fill =adaptive_capacity_scaled), color = "darkgray") +
-  scale_fill_viridis_c(option = "magma", direction = 1, na.value = "gray", limits = color_range)+
-  labs( fill = "Adaptive capacity") +
-  theme_bw()+
-  theme(legend.position = "bottom", legend.text = element_text(size = 8), legend.title = element_text(size = 10))
-
-adaptive_capacity_map
-
-# Create a bar chart of the top 20 ranking exposure countries
-top_20_adaptive_capacity <- df_spatial %>% 
-  arrange((adaptive_capacity_inverse_scaled)) %>% 
-  slice(1:20)
-
-adaptive_capacity_bar <- ggplot(top_20_adaptive_capacity, aes(x = reorder(Alpha.3.code, adaptive_capacity_scaled), y = adaptive_capacity_scaled, fill=adaptive_capacity_scaled)) +
-  geom_bar(stat = "identity") +
-  scale_y_continuous(expand=c(0,0))+
-  coord_flip() +
-  labs(x = NULL, y = "Adaptive Capacity") +
-  scale_fill_viridis_c(option = "magma", direction = 1, na.value = "gray", limits = color_range)+
-  theme_classic() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
-  theme(legend.position="none")+
-  theme(
-    text = element_text(size = 16),  
-    axis.text = element_text(size = 14) )
-
-adaptive_capacity_bar 
-
-
-
-
-
-
-
-#OTHER PLOTS #######
-#exploratory analyses of relationships between components
-
-# Set a threshold value for displaying labels
-threshold_value <- 0.8  # Adjust this value to your preference
-
-# Create bubble plot to show relationship between exposure and s, ac
-plot_data_lm<- df %>% 
- # filter(Alpha.3.code!="CHN") %>% 
-  mutate(mean_sensitivity_adaptive = rowMeans(cbind(sensitivity_scaled, adaptive_capacity_inverse_scaled)))
-
-linear_model <- lm(exposure_scaled ~ mean_sensitivity_adaptive, data = plot_data_lm)
-summary(linear_model)
-
-# Extract p-value for the slope coefficient
-p_value_slope <- summary(linear_model)$coefficients["mean_sensitivity_adaptive", "Pr(>|t|)"]
-
-
-mean_S_AC<-plot_data_lm%>%
-  ggplot(aes(y = exposure_scaled, x = mean_sensitivity_adaptive)) +
-  geom_point(aes(alpha=0.8), size=4) +
-  labs(y = "Exposure", x  = "Mean(Adaptive capacity, Sensitivity)" , title="Exposure - Mean(S, AC)") +
-  theme_classic()+
-  geom_smooth(method="lm", color="navy", fill = "navy")+
-  theme(legend.position="none")+
-  theme(text=element_text(size=16))+
-  scale_y_continuous(limits=c(0,1))+
-  annotate("text", x = 0.3, y = 0.9, 
-           label = paste("Slope: ", round(coef(linear_model)[2], 4), "\nIntercept: ", round(coef(linear_model)[1], 4), "\np-value: ", format(p_value_slope, scientific = TRUE)), 
-       color = "black")
-mean_S_AC
-
-
-#senstivity alone 
-linear_model_S <- lm(exposure_scaled ~ sensitivity_scaled, data =  df)
-summary(linear_model_S)
-
-# Extract p-value for the slope coefficient
-p_value_slope_S <- summary(linear_model_S)$coefficients["sensitivity_scaled", "Pr(>|t|)"]
-
-sensitivity_plot<- df %>%
-  ggplot(aes(y = exposure_scaled, x = sensitivity_scaled)) +
-  geom_point(aes(alpha=0.8), size=4) +
-  labs(y = "Exposure", x  = "Sensitivity", title="Exposure - Sensitivity") +
-  theme_classic()+
-  geom_smooth(method="lm", color="navy", fill = "navy")+
-  theme(legend.position="none")+
-  theme(text=element_text(size=16))+
-  annotate("text", x = 0.3, y = 0.9, 
-           label = paste("Slope: ", round(coef(linear_model_S)[2], 4), "\nIntercept: ", round(coef(linear_model_S)[1], 4), "\np-value: ", format(p_value_slope_S, scientific = TRUE)), 
-           color = "black")
-
-sensitivity_plot
-
-linear_model_AC <- lm(exposure_scaled ~ adaptive_capacity_inverse_scaled, data =  df)
-summary(linear_model_AC)
-
-# Extract p-value for the slope coefficient
-p_value_slope_AC <- summary(linear_model_AC)$coefficients["adaptive_capacity_inverse_scaled", "Pr(>|t|)"]
-
-AC_plot<-df %>%
-  ggplot(aes(y = exposure_scaled, x = adaptive_capacity_inverse_scaled)) +
-  geom_point(aes(alpha=0.8), size=4) +
-  labs(y = "Exposure", x  = "Adaptive Capacity", title="Exposure - Adaptive Capacity") +
-  theme_classic()+
-  geom_smooth(method="lm", color="navy", fill = "navy")+
-  theme(legend.position="none")+
- # geom_text(aes(label = Alpha.3.code), vjust = -0.5, hjust = 0.5, size = 3) + 
-  theme(text=element_text(size=16))+
-  annotate("text", x = 0.3, y = 0.9, 
-           label = paste("Slope: ", round(coef(linear_model_AC)[2], 4), "\nIntercept: ", round(coef(linear_model_AC)[1], 4), "\np-value: ", format(p_value_slope_AC, scientific = TRUE)), 
-           color = "black")
-AC_plot
-
-mean_S_AC + sensitivity_plot + AC_plot
 
