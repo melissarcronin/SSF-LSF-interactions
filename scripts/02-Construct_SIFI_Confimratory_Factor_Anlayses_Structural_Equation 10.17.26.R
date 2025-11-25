@@ -69,7 +69,7 @@ color_scale <- scale_fill_viridis_c(
 
 ###############################################################################
 
-
+colnames(df)
 df<- read.csv("data/SIFI_Index_data.csv", sep=",", header=T) %>%
   dplyr::select(
     Alpha.3.code,
@@ -113,17 +113,45 @@ desired_measures <- c("cfi", "tli", "rmsea", "srmr", "chisq", "pvalue", "AIC", "
 colnames(df)
 # CFA model to idnetify important drivers of vulnerability 
 model_V <- '
-    vulnerability =~   crit_1_2 + crit_1_1_A+crit_1_1_B
+    vulnerability =~    crit_1_2+ crit_1_1_A+crit_1_1_B
   vulnerability =~  crit_2_1 +crit_2_2 
-  vulnerability =~  crit_3_1 + crit_3_2
+  vulnerability =~ crit_3_1+ crit_3_2
   
   # Add covariances based on modification indices (determined below)
- crit_1_2~~crit_1_1_B
- crit_1_1_B ~~ crit_1_1_A
-  crit_1_1_B ~~ crit_2_1
- crit_1_2 ~~ crit_1_1_A
-  crit_2_2 ~~ crit_3_2
+  crit_1_2~~crit_1_1_B
+  crit_1_1_B ~~ crit_1_1_A
+ #  crit_1_1_B ~~ crit_2_1
+  crit_1_2 ~~ crit_1_1_A
+   crit_2_2 ~~ crit_3_2
  '
+#png("/Users/melissacronin/Desktop/March_IHH_figures/vulnerability_cfa_sem_plot.png", width = 1600, height = 1200, res = 600) # Adjust size and resolution as needed
+
+
+semPaths(model_V, what = "est", 
+         whatLabels = "std",
+         curvePivot = TRUE,
+         layout = "tree",  style = "ram",
+         # nodeLabels = c( "SSF catch",
+         #                  "AIS broadcasting LSF density",
+         #                  "Non-broadcasting LSF density",
+         #                    "SSF economic value",
+         #                   "SSF nutrition",
+         #                   "development","governance",
+         #                "Vulnerability"),
+         sizeMan = 13, 
+         sizeLat = 20,
+         sizeLat2=10, 
+         sizeMan2=10,
+         sizeInt2=1,
+         #edge.color = ifelse(lavInspect(cfa_model_V, "std")$lambda > 0, "royalblue", "red3"), # Change colors based on sign
+         nCharNodes = 0.5, # To reduce the space between nodes, set to 0 or adjust as necessary
+         edge.label.cex = 2,
+         edge.color = ifelse(
+           lavInspect(cfa_model_V, "std")$lambda > 0,
+           "royalblue",           # positive association
+           "red3"                 # negative association
+         ) )
+
 
 cfa_model_V <- cfa(model_V, data=df, estimator="MLMV", bootstrap = 1000)
 lavInspect(cfa_model_V, "theta")
@@ -143,33 +171,6 @@ lavInspect(cfa_model_V, "cov.lv")
 
 # Plot the CFA results
 
-#png("/Users/melissacronin/Desktop/March_IHH_figures/vulnerability_cfa_sem_plot.png", width = 1600, height = 1200, res = 600) # Adjust size and resolution as needed
-pe <- parameterEstimates(cfa_model_V, standardized = TRUE)
-loadings <- pe[pe$op == "=~", ]   # latent loadings only
-edge_alpha <- ifelse(loadings$pvalue < 0.05, 1, 0.25)   # 25% opacity for ns paths
-edge_width <- ifelse(loadings$pvalue < 0.05, 4, 1.5)    # thinner lines for ns paths
-edge_color <- ifelse(loadings$std.all > 0, "royalblue", "red3")  # sign-based color
-
-
-
-
-semPaths(cfa_model_V, what = "est", whatLabels = "std",
-         curvePivot = TRUE,layout = "tree",  style = "ram",
-           nodeLabels = c( "SSF catch",
-                            "AIS broadcasting LSF density",
-                            "Non-broadcasting LSF density",
-                              "SSF economic value",
-                             "SSF nutrition",
-                             "development","governance",
-                          "Vulnerability"),
-         sizeMan = 17, 
-         sizeLat = 25,
-         sizeLat2=10, 
-         sizeMan2=10,
-         sizeInt2=1,
-         edge.color = ifelse(lavInspect(cfa_model_V, "std")$lambda > 0, "royalblue", "red3"), # Change colors based on sign
-         nCharNodes = 0.5, # To reduce the space between nodes, set to 0 or adjust as necessary
-         edge.label.cex = 2)
 
 
 
@@ -200,13 +201,13 @@ world_shp_iso <- world_shp %>%
   mutate(Alpha.3.code = countrycode(sourcevar = ID, origin = "country.name", destination = "iso3c"))
 
 df_spatial <- merge(world_shp_iso, df,by="Alpha.3.code" )
-
+colnames(df_spatial)
 SIFI_map<-ggplot() +
   geom_sf(data = world_shp_iso , fill = "gray", color = "lightgrey") +
   geom_sf(data=df_spatial, aes(fill =SIFI_Index), color = "lightgrey")+
   color_scale+
   labs(fill = "SIFI Index") +
-  theme_classic() +
+  theme_void() +
   theme(legend.position = "top", legend.text = element_text(size = 8), legend.title = element_text(size = 10))+
   geom_hline(yintercept = 0,  color = "darkgrey", alpha = 0.5,  linewidth = 0.2) +  # Equator
   geom_hline(yintercept = 23.5, linetype = "dashed",color = "darkgrey", alpha = 0.8, linewidth=0.2) +  # Tropic of Cancer
@@ -256,15 +257,15 @@ ggplot(loadings_df, aes(x = factor, y = loading, fill = variable)) +
 
 # SEM Model Specification
 #examine relationships between constructs 
-
+colnames(df)
 sem_model <- '
 # Measurement Model
 # baseline indicator, fixed to 1 for identification
 
-#E =~ crit_1_1_A +  crit_1_2
-E =~ crit_1_1 + crit_1_2
+E =~ crit_1_1_A+ crit_1_1_B + crit_1_2
 
 S =~ crit_2_1 + crit_2_2
+#S =~ crit_2_1_A + crit_2_1_B+ crit_2_1_C +  crit_2_1_D+ crit_2_2_A + crit_2_2_B + crit_2_2_C
 
 AC =~ crit_3_1 + crit_3_2
 
@@ -274,9 +275,9 @@ AC =~ crit_3_1 + crit_3_2
 # Regression paths capture hypothesized causal effects
 # S is regressed on E: captures the effect of exposure on sensitivity
 
-S ~ E
-S~AC
-AC ~ E 
+E ~S
+E  ~ AC
+S  ~ AC
 
 # crit_2_1 ~~   crit_3_1
 
@@ -335,7 +336,7 @@ A<- df %>%
     axis.text = element_text(size = 14) )
 A
 # ---- AC vs Exposure ----
-lm_fit_AC_E <- lm(adaptive_capacity_inverse_scaled ~ exposure_scaled, data = df)
+lm_fit_AC_E <- lm(adaptive_capacity_scaled ~ exposure_scaled, data = df)
 
 beta_AC_E <- round(coef(lm_fit_AC_E)[2], 2)
 p_val_AC_E <- summary(lm_fit_AC_E)$coefficients[2, 4]
@@ -399,9 +400,10 @@ region_order <- c( "Europe/Asia", "Europe","Oceania","Americas","Asia", "Africa"
 # Order the levels of FAO.Region
 df_subset$Continent <- factor(df_subset$Continent, levels = region_order)
 df_subset$country<- factor(df_subset$country, levels = unique(df_subset$country[order(df_subset$Continent, df_subset$SIFI_Index)]))
+df_subset <- df_subset %>%
+  mutate(SIFI_centered = SIFI_Index - 0.5)
 
-
-P<-ggplot(df_subset, aes(x = country, y =SIFI_Index,fill = SIFI_Index)) +
+P<-ggplot(df_subset, aes(x = country, y =SIFI_centered,fill = SIFI_Index)) +
   geom_bar(stat = "identity", position = "dodge") +
   labs(x = "Country", y = "SIFI Index of Vulnerability") +
   theme_classic() +
@@ -409,14 +411,18 @@ P<-ggplot(df_subset, aes(x = country, y =SIFI_Index,fill = SIFI_Index)) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
   theme(legend.position = "none") +  
   coord_flip() +  # Flip coordinates
-  scale_y_continuous(expand=c(0,0))+
+  scale_y_continuous(
+    limits = c(-0.5, 0.5),
+    breaks = c(-0.5, -0.25, 0, 0.25, 0.5),
+    labels = c("0", "0.25", "0.5", "0.75", "1.0")   # artificial SIFI scale
+  ) +
   theme(
     text = element_text(size = 14),
     axis.text.y = element_text(size = 6)
   )+
   scale_x_discrete(expand = c(0.03, 0.03)) 
-SIFI_map + P
-#ggsave("countries_grouped.tiff", dpi=300, height=10, width=5)
+P
+ggsave("countries_grouped.tiff", dpi=300, height=5, width=5)
 
 ##########################################################################################################################
 #check if PAA is related to any of the variables using PAA data from Basurto et al. 2024
@@ -469,7 +475,7 @@ summary_table
 
 # Reshape data from wide to long for plotting
 df_long <- df %>%
-  select(has_PAA, exposure_scaled, sensitivity_scaled, adaptive_capacity_scaled) %>%
+  dplyr::select(has_PAA, exposure_scaled, sensitivity_scaled, adaptive_capacity_scaled) %>%
   pivot_longer(cols = c(exposure_scaled, sensitivity_scaled, adaptive_capacity_scaled),
                names_to = "metric",
                values_to = "value")

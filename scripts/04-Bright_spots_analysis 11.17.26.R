@@ -53,7 +53,7 @@ color_scale <- scale_fill_viridis_c(
   na.value = "gray",
   limits = color_range
 )
-
+colnames(df)
 
 ###############################################################################
 
@@ -88,11 +88,6 @@ paa_data<- read.csv("data/preferential_access_areas_Basurto_2024.csv", sep=",", 
 paa_countries <- unique(paa_data$Alpha.3.code)
 
 
-
-
-
-
-
 bright_spot_deltas <- df %>%
   group_by(FAO.Subregion) %>%
   mutate(
@@ -110,7 +105,7 @@ bright_spot_deltas <- df %>%
   filter( Exposure_Delta > 0,
          Sensitivity_Delta > 0,
          Adaptive_Capacity_Delta < 0 ) %>%
-  select(Country, Alpha.3.code, FAO.Subregion,
+  dplyr::select(Country, Alpha.3.code, FAO.Subregion,
          Exposure_Delta, Sensitivity_Delta, Adaptive_Capacity_Delta) %>%
   
   pivot_longer(

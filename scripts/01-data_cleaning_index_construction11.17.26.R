@@ -70,71 +70,121 @@ color_scale <- scale_fill_viridis_c(
 # COMPONENT 1. EXPOSURE ########
 ###############################################################################
 
-### 1_1 Construct composite index of intensity of nearshore large-scale fishing activity 3####
+### 1_1 Construct composite index of intensity of nearshore large-scale fishing activity ####
+#pre-emplively filter all inpur data to only include data for which we have exposure data and MOST sensitivity data (see mehtods) this ensures that data are scaled from 0 to 1 with all countries that should be included
+country_list <- read.csv("country_list_from_all_components.csv")$Alpha.3.code
+
+#manually add data for a few countries that are reported separately. these decisions are made based on GFW precedent.
+eez_manual_iso <- tibble::tribble(
+  ~GEONAME,                                       ~Alpha.3.code,
+  "United States Exclusive Economic Zone (Alaska)",     "USA",
+  "United States Exclusive Economic Zone (Hawaii)",     "USA",
+  "Indian Exclusive Economic Zone (Andaman and Nicobar Islands)", "IND",
+  "Ecuadorian Exclusive Economic Zone (Galapagos)",     "ECU",
+  "Spanish Exclusive Economic Zone (Canary Islands)",   "ESP",
+  "Overlapping claim Kuril Islands: Japan / Russia",     "JPN",   # Japan controls populated islands
+  "Portuguese Exclusive Economic Zone (Azores)",        "PRT",
+  "Portuguese Exclusive Economic Zone (Madeira)",       "PRT",
+  "Overlapping claim Senkaku Islands: Japan / China / Taiwan", "TWN", # administered by Taiwan in GFW coding
+  "Overlapping claim Navassa Island: USA / Haiti / Jamaica",  "HTI",
+  "Overlapping claim Ile Tromelin: Reunion / Madagascar / Mauritus", "FRA",
+  "Oecussi Ambeno Exclusive Economic Zone",              "TLS",
+  "Colombian Exclusive Economic Zone (Serranilla)",      "COL",
+  "Overlapping claim Doumeira Islands: Djibouti / Eritrea", "ERI",
+  "Overlapping claim Ceuta: Spain / Morocco",            "ESP",
+  "Overlapping claim Chafarinas Islands: Spain / Morocco","ESP",
+  "Overlapping claim Melilla: Spain / Morocco",          "ESP",
+  "Overlapping claim Alhucemas Islands: Spain / Morocco","ESP",
+  "Overlapping claim Peñón de Vélez de la Gomera: Spain","ESP"
+)
+
+gfw_raw <- read.csv(here("data", "activity_close_to_shore.csv"))
+
+gfw_raw <- gfw_raw %>%
+  left_join(eez_manual_iso, by = "GEONAME") %>%   # <-- join manual mapping
+  mutate(
+    ISO_TER1 = ifelse(ISO_TER1 == "" & !is.na(Alpha.3.code), Alpha.3.code, ISO_TER1)
+  ) %>%
+  dplyr::select(-Alpha.3.code) %>% 
+  filter(ISO_TER1 != "")
+
 
 #1. Read CSV
-gfw_data <- read.csv(
-  here("data", "activity_close_to_shore.csv")) %>%
+gfw_data <- gfw_raw %>% 
   filter(dist_km == 25) %>%
-  filter(ISO_TER1 != "") %>%  # remove EEZ-null fishing
-  dplyr::select(
-    ISO_TER1,
-    area_km2,        
-    ais_fishing,
-    dark_fishing
-  ) %>%
   rename(Alpha.3.code = ISO_TER1,
          nonbroadcasting_fishing =dark_fishing) %>%
+  filter(Alpha.3.code %in% country_list) %>% 
+  dplyr::select(
+   Alpha.3.code,
+    area_km2,        
+    ais_fishing,
+   nonbroadcasting_fishing ,
+   fishing_per_km2,
+  ) %>%
   group_by(Alpha.3.code) %>%  # area is constant per country
   summarise(
-    area_km2=sum(area_km2),
+    nearshore_area=sum(area_km2),
     ais_fishing   = sum(ais_fishing,   na.rm = TRUE),
     nonbroadcasting_fishing  = sum(nonbroadcasting_fishing,  na.rm = TRUE),
+    fishing_ratio=sum(fishing_per_km2),
     .groups = "drop"
   ) %>%
   mutate(  # Normalize by coastal area
-    ais_density  = ais_fishing  / area_km2,
-    nonbroadcasting_density= nonbroadcasting_fishing / area_km2
+    ais_density  = ais_fishing  / nearshore_area,
+    nonbroadcasting_density= nonbroadcasting_fishing / nearshore_area
   )
 
-# Convert each country’s density into a *share of global density*.
-total_ais_density  <- sum(gfw_data$ais_density,  na.rm = TRUE)
-total_nonbroadcasting_density <- sum(gfw_data$nonbroadcasting_density, na.rm = TRUE)
-total_all          <- total_ais_density + total_nonbroadcasting_density
+# Calculate proportion of nearshore effort that is AIS matched vs not.
+total_ais  <- sum(gfw_data$ais_fishing,  na.rm = TRUE)
+total_nonbroadcasting <- sum(gfw_data$nonbroadcasting_fishing, na.rm = TRUE)
+total_all          <- total_ais + total_nonbroadcasting
 
-ais_share_global  <- total_ais_density  / total_all
-nonbroadcasting_share_global <- total_nonbroadcasting_density / total_all
+ais_share_global  <- total_ais  / total_all
+nonbroadcasting_share_global <- total_nonbroadcasting / total_all
 
 cat("Global AIS share:  ", round(ais_share_global  * 100, 2), "%\n")
 cat("Global NONBROADCASTING share: ", round(nonbroadcasting_share_global * 100, 2), "%\n")
 
 crit_1_1_data <- gfw_data %>%
   mutate(country_name = countrycode(Alpha.3.code, "iso3c", "country.name")) %>%
+  # log densities (already per km², so small countries are not inherently penalized)
   mutate(
-    ais_prop  = ais_density  / total_ais_density,
-    nonbroadcasting_prop = nonbroadcasting_density / total_nonbroadcasting_density
+    crit_1_1_A_raw = log(ais_density + 1e-6),
+    crit_1_1_B_raw = log(nonbroadcasting_density + 1e-6)
   ) %>%
-  # create raw log-transformed components
+  # Rescale each sub-indicator 
   mutate(
-    crit_1_1_A_raw = log(ais_prop + 1e-6),
-    crit_1_1_B_raw = log(nonbroadcasting_prop + 1e-6)
+    crit_1_1_A = scales::rescale(crit_1_1_A_raw, to = c(0, 1)),
+    crit_1_1_B = scales::rescale(crit_1_1_B_raw, to = c(0, 1))
   ) %>%
-  # rescale each sub-indicator 
-  mutate(
-    crit_1_1_A = scales::rescale(crit_1_1_A_raw),
-    crit_1_1_B = scales::rescale(crit_1_1_B_raw)
-  ) %>%
-  # combine A and B into the overall crit_1_1 using global weights
-  mutate(
-    crit_1_1_raw = crit_1_1_A * ais_share_global +
-      crit_1_1_B * nonbroadcasting_share_global,
-    crit_1_1     = scales::rescale(crit_1_1_raw)
-  )
-
+  # Combined LSF nearshore exposure indicator 
+  mutate( crit_1_1 = ais_share_global * crit_1_1_A + nonbroadcasting_share_global * crit_1_1_B )
 
 crit_1_1_data %>%
   ggplot()+
   geom_histogram(aes(x=crit_1_1))
+
+ggplot(crit_1_1_data, aes(x = crit_1_1_A , y =   crit_1_1_B, color = crit_1_1)) +
+  geom_point(size = 3, alpha = 0.8) +
+  geom_smooth(method= "lm")+
+  scale_color_viridis_c(option = "magma", direction = -1) +
+  geom_text_repel(
+    aes(label = country_name),
+    size = 3,
+    max.overlaps = Inf,
+    box.padding  = 0.25,
+    point.padding = 0.2
+  ) +
+  labs(
+    x = "AIS broadcasting component (crit_1_1_A)",
+    y = "Non-broadcasting component (crit_1_1_B)",
+    color = "crit_1_1 score",
+    title = "Exploring Exposure Components: AIS vs Non-broadcasting Density"
+  ) +
+  theme_classic() +
+  theme(text = element_text(size = 14))
+
 
 shapiro.test(crit_1_1_data$crit_1_1)
 
@@ -278,6 +328,7 @@ ggplot() +
 ssf_catch<- read.csv("ssf_catch.csv", sep=",", header=TRUE) %>% 
   filter(Marine_Inland_char=="Marine") %>% 
   rename( Alpha.3.code=country_ISO_alpha3) %>% 
+  filter(Alpha.3.code %in% country_list) %>% 
   group_by(country, Alpha.3.code) %>% 
   slice_head(n=1) %>%
   dplyr::select(Alpha.3.code,country,national_catch_final ) %>% 
@@ -311,11 +362,12 @@ shapiro.test(crit_1_2_data$crit_1_2)
 ### CALCULATE EXPOSURE ######
 
 exposure_data<- crit_1_1_data %>% 
-  left_join(crit_1_2_data, by =c( "Alpha.3.code","area_km2")) %>% 
+  left_join(crit_1_2_data, by =c( "Alpha.3.code")) %>% 
   drop_na() %>% 
   mutate(exposure_raw = rowMeans(dplyr::select(., crit_1_1, crit_1_2 ), na.rm = TRUE)) %>% 
   mutate(exposure_scaled=scales::rescale(exposure_raw)) %>% 
   dplyr::select(Alpha.3.code,
+                fishing_ratio,
             crit_1_1, crit_1_1_A, crit_1_1_B, crit_1_2 ,exposure_scaled) 
 
 shapiro.test(exposure_data$exposure_scaled)
@@ -430,7 +482,8 @@ exposure_means
 landed_value_data<-read.csv(
   here("data", "landed_value_ssf.csv"),
   stringsAsFactors = FALSE) %>% 
-  rename(Alpha.3.code=country_ISO_alpha3 )
+  rename(Alpha.3.code=country_ISO_alpha3 ) %>% 
+  filter(Alpha.3.code %in% country_list) 
 
 crit_2_1_A_data<- landed_value_data %>%  #this comes from "Global_SSF_LV" from IHH core datasets
   mutate(global_landed_value=sum(landed_value)) %>% 
@@ -450,7 +503,8 @@ crit_2_1_A_histogram<-ggplot(crit_2_1_A_data) +
 employment_data<- read.csv(  
   here("data", "employment_ssf.csv"),
   stringsAsFactors = FALSE) %>%  
-  rename(Alpha.3.code=country_ISO_alpha3 )
+  rename(Alpha.3.code=country_ISO_alpha3 ) %>% 
+  filter(Alpha.3.code %in% country_list) 
 
 
 crit_2_1_B_data<-employment_data %>% 
@@ -480,7 +534,8 @@ ssf_employment$harvest_marine_SSF<-as.numeric(ssf_employment$harvest_marine_SSF)
 labor_data<- read.csv( 
   here("data", "world_bank_employment_data.csv"),
   stringsAsFactors = FALSE) %>% 
-  rename(Alpha.3.code=Country.Code )
+  rename(Alpha.3.code=Country.Code ) %>% 
+  filter(Alpha.3.code %in% country_list) 
 
 global_employment<- labor_data %>% 
   mutate(employment_mean_raw=rowMeans(dplyr::select(., X2013: X2017) )) %>% 
@@ -560,7 +615,8 @@ crit_2_1_data <-crit_2_1_A_data %>%
 coastal_population<-read.csv( 
   here("data", "coastal_population.csv"),
   stringsAsFactors = FALSE) %>% 
-  rename(Alpha.3.code =country_ISO_alpha3)
+  rename(Alpha.3.code =country_ISO_alpha3) %>% 
+  filter(Alpha.3.code %in% country_list)
 
 crit_2_2_A_data<- ssf_catch %>% 
   dplyr::left_join(coastal_population, by = c("Alpha.3.code") ) %>% 
@@ -585,7 +641,8 @@ nutrition_data<-  read.csv(
     origin = "iso3c",
     destination = "continent"
   )) %>% 
-  rename(Alpha.3.code =country)
+  rename(Alpha.3.code =country) %>% 
+  filter(Alpha.3.code %in% country_list) 
 
 crit_2_2_B_data<- nutrition_data %>% 
   dplyr::left_join(coastal_population, by = c("Alpha.3.code") ) %>% 
@@ -608,6 +665,7 @@ shapiro.test(crit_2_2_B_data$crit_2_2_B)
 crit_2_2_C_data<-read.csv( 
   here("data", "prevalence_micronutrient_deficiency.csv"), stringsAsFactors = FALSE) %>% 
                            rename(Alpha.3.code=ISO3) %>% 
+  filter(Alpha.3.code %in% country_list) %>% 
   dplyr::select(Alpha.3.code,  PIMII.without.Fortification) %>% 
   rename(crit_2_2_C_raw =PIMII.without.Fortification) %>% 
   mutate(crit_2_2_C_log=log(crit_2_2_C_raw+1)) %>% 
@@ -676,7 +734,8 @@ hdi<-read.csv(
   stringsAsFactors = FALSE) %>% 
   rename(Alpha.3.code=country_ISO_alpha3) %>% 
   dplyr::select(Alpha.3.code, country,
-                hdi_2013, hdi_2014, hdi_2015, hdi_2017, hdi_2017)
+                hdi_2013, hdi_2014, hdi_2015, hdi_2017, hdi_2017) %>% 
+  filter(Alpha.3.code %in% country_list) 
 
 crit_3_1_data<-hdi %>% 
   dplyr::mutate(crit_3_1_raw= rowMeans(dplyr::select(., hdi_2013:hdi_2017) ))  %>%
@@ -697,6 +756,7 @@ governance<-read.csv(
   stringsAsFactors = FALSE) %>% 
   rename(Alpha.3.code=country_ISO_alpha3) %>% 
   filter(Alpha.3.code!="") %>% 
+  filter(Alpha.3.code %in% country_list) %>% 
   dplyr::select(Alpha.3.code, corruption, gov_effectiveness, political_stability, regulatory_quality, rule_of_law, voice_accountability) %>% 
   mutate_at(vars(corruption, gov_effectiveness, political_stability, regulatory_quality, rule_of_law, voice_accountability),
             ~ ifelse(. == "ND", NA, as.numeric(.))  ) %>% 
@@ -954,7 +1014,21 @@ df <- all_components %>%
     index_mean_scaled = scales::rescale(log(overall_index_mean+1), to = c(0, 1))
   ) 
 
+
 write.csv(df, "data/SIFI_Index_data.csv")
+
+#these are countries for which we have ALL data.above, data are filtered already for these countries only so that 
+#they can be correctly scaled. 
+country_list <- df %>%
+  pull(Alpha.3.code) %>%
+  unique()
+# Convert to a dataframe for clean saving
+country_df <- data.frame(Alpha.3.code = country_list)
+
+# Write to CSV
+write.csv(country_df,
+          file = "country_list_from_all_components.csv",
+          row.names = FALSE)
 
 #PLOT DISTRIBUTIONS ######
 
