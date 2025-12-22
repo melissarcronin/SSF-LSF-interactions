@@ -29,7 +29,7 @@ required_packages <- c("here",
   
   # Visualization
   "ggplot2", "viridis", "ggrepel", "scico", "patchwork", "cowplot","RColorBrewer",
-  
+  "rnaturalearth",
   # Mapping
   "sf", "rnaturalearth", "rnaturalearthdata", "cartogram", 
   "raster",  "maps",
@@ -150,22 +150,21 @@ crit_1_1_data <- gfw_data %>%
   mutate(country_name = countrycode(Alpha.3.code, "iso3c", "country.name")) %>%
   # log densities (already per km², so small countries are not inherently penalized)
   mutate(
-    crit_1_1_A_raw = log(ais_density + 1e-6),
-    crit_1_1_B_raw = log(nonbroadcasting_density + 1e-6)
+    crit_1_1_A_raw =log(ais_density+1 ),
+    crit_1_1_B_raw = log(nonbroadcasting_density +1 )
   ) %>%
-  # Rescale each sub-indicator 
   mutate(
     crit_1_1_A = scales::rescale(crit_1_1_A_raw, to = c(0, 1)),
     crit_1_1_B = scales::rescale(crit_1_1_B_raw, to = c(0, 1))
   ) %>%
-  # Combined LSF nearshore exposure indicator 
+  # Combined LSF nearshore exposure indicator
   mutate( crit_1_1 = ais_share_global * crit_1_1_A + nonbroadcasting_share_global * crit_1_1_B )
 
 crit_1_1_data %>%
   ggplot()+
   geom_histogram(aes(x=crit_1_1))
 
-ggplot(crit_1_1_data, aes(x = crit_1_1_A , y =   crit_1_1_B, color = crit_1_1)) +
+ggplot(crit_1_1_data, aes(x =crit_1_1_A , y =   crit_1_1_B, color = crit_1_1)) +
   geom_point(size = 3, alpha = 0.8) +
   geom_smooth(method= "lm")+
   scale_color_viridis_c(option = "magma", direction = -1) +
@@ -211,6 +210,7 @@ coastal_buffer$iso_code <- countrycode(
   origin = "country.name",
   destination = "iso3c"
 ) 
+
 
 coastal_buffer<- coastal_buffer%>% 
   dplyr::select(eez, sovereign, iso_code,sum_Area_S)
@@ -339,14 +339,14 @@ ssf_catch$national_catch_final<-round(ssf_catch$national_catch_final)
 
 # gfw_data already contains the correct area_km2 from the nearshore fishing calc
 gfw_area <- gfw_data %>%  
-  dplyr::select(Alpha.3.code, area_km2)  # pull only the area field
+  dplyr::select(Alpha.3.code, nearshore_area)  # pull only the area field
 
 # Join SSF catch to GFW area
 ssf_catch_area <- ssf_catch %>% 
   left_join(gfw_area, by = "Alpha.3.code" )%>%  drop_na()
 
 crit_1_2_data<- ssf_catch_area %>% 
-  mutate(catch_per_area= log(national_catch_final)/log(area_km2)) %>% 
+  mutate(catch_per_area= log(national_catch_final)/log(nearshore_area)) %>% 
   rename(crit_1_2_raw= catch_per_area) %>% 
   mutate( crit_1_2 = scales::rescale(crit_1_2_raw, to = c(0, 1)) )%>% 
   filter(crit_1_2!="NA")
@@ -1019,16 +1019,16 @@ write.csv(df, "data/SIFI_Index_data.csv")
 
 #these are countries for which we have ALL data.above, data are filtered already for these countries only so that 
 #they can be correctly scaled. 
-country_list <- df %>%
-  pull(Alpha.3.code) %>%
-  unique()
-# Convert to a dataframe for clean saving
-country_df <- data.frame(Alpha.3.code = country_list)
-
-# Write to CSV
-write.csv(country_df,
-          file = "country_list_from_all_components.csv",
-          row.names = FALSE)
+# country_list <- df %>%
+#   pull(Alpha.3.code) %>%
+#   unique()
+# # Convert to a dataframe for clean saving
+# country_df <- data.frame(Alpha.3.code = country_list)
+# 
+# # Write to CSV
+# write.csv(country_df,
+#           file = "country_list_from_all_components.csv",
+#           row.names = FALSE)
 
 #PLOT DISTRIBUTIONS ######
 
@@ -1198,14 +1198,14 @@ highlight_countries <- c("BRA", "GMB", "GAB", "ARG", "ESP", "CHL", "GNQ", "PER",
 df_without_missing <- df[!is.na(df$index_prod_scaled), ]
 
 # Create the scatter plot with quartiles and lines
-ggplot(df, aes(x = fct_reorder(country_ISO_alpha3,index_prod_scaled),y = index_prod_scaled )) +
+ggplot(df, aes(x = fct_reorder(Alpha.3.code,index_prod_scaled),y = index_prod_scaled )) +
   geom_rect(
     xmin = -Inf, xmax = Inf, ymin = threshold, ymax = 1,
     fill = "lightgray", aes(alpha = 0.9 ) # Shaded rectangle for top quartile
   ) + 
-  geom_point(aes(color = country_ISO_alpha3 %in% highlight_countries)) +  # Highlight countries by color
+  geom_point(aes(color = Alpha.3.code %in% highlight_countries)) +  # Highlight countries by color
   geom_hline(yintercept = quartiles, color = "blue", linetype = "dashed") +  # Add horizontal lines for quartiles
-  geom_text(   aes(label = ifelse(country_ISO_alpha3 %in% highlight_countries, country_ISO_alpha3, "")),
+  geom_text(   aes(label = ifelse(Alpha.3.code %in% highlight_countries, Alpha.3.code, "")),
     vjust = -0.5,  # Adjust vertical position of labels
     show.legend = FALSE   ) +# Hide the legend for the labels 
   labs(   x = "Country",  y = "Normalized Overall Index Rank", title = "Countries' Overall Index Rank vs. Quartiles"  ) +

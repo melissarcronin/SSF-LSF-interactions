@@ -113,21 +113,20 @@ desired_measures <- c("cfi", "tli", "rmsea", "srmr", "chisq", "pvalue", "AIC", "
 colnames(df)
 # CFA model to idnetify important drivers of vulnerability 
 model_V <- '
-    vulnerability =~    crit_1_2+ crit_1_1_A+crit_1_1_B
+    vulnerability =~    crit_1_2+ crit_1_1_A + crit_1_1_B
   vulnerability =~  crit_2_1 +crit_2_2 
   vulnerability =~ crit_3_1+ crit_3_2
   
   # Add covariances based on modification indices (determined below)
-  crit_1_2~~crit_1_1_B
-  crit_1_1_B ~~ crit_1_1_A
- #  crit_1_1_B ~~ crit_2_1
-  crit_1_2 ~~ crit_1_1_A
-   crit_2_2 ~~ crit_3_2
+crit_1_2 ~~ crit_1_1_B
+crit_2_1 ~~ crit_1_1_A
+
  '
 #png("/Users/melissacronin/Desktop/March_IHH_figures/vulnerability_cfa_sem_plot.png", width = 1600, height = 1200, res = 600) # Adjust size and resolution as needed
 
+cfa_model_V <- cfa(model_V, data=df, estimator="MLMV", bootstrap = 1000)
 
-semPaths(model_V, what = "est", 
+semPaths(cfa_model_V, what = "est", 
          whatLabels = "std",
          curvePivot = TRUE,
          layout = "tree",  style = "ram",
@@ -153,10 +152,9 @@ semPaths(model_V, what = "est",
          ) )
 
 
-cfa_model_V <- cfa(model_V, data=df, estimator="MLMV", bootstrap = 1000)
+summary(cfa_model_V, fit.measures=TRUE,  standardized = TRUE)
 lavInspect(cfa_model_V, "theta")
 # Check the fit of the model
-summary(cfa_model_V, fit.measures=TRUE,  standardized = TRUE)
 fit_measures_V <- fitMeasures(cfa_model_V, fit.measures = desired_measures)
 fit_measures_V
 vartable(cfa_model_V)
@@ -164,9 +162,9 @@ vartable(cfa_model_V)
 mod_indices <- modificationindices(cfa_model_V)
 # Sort by largest MI
 mod_indices <- mod_indices[order(mod_indices$mi, decreasing = TRUE), ]
-
 # View top 10 suggested modifications
 head(mod_indices, 10)
+
 lavInspect(cfa_model_V, "cov.lv")
 
 # Plot the CFA results
@@ -262,7 +260,9 @@ sem_model <- '
 # Measurement Model
 # baseline indicator, fixed to 1 for identification
 
-E =~ crit_1_1_A+ crit_1_1_B + crit_1_2
+E =~ exposure_scaled
+#E =~ crit_1_1_A+ crit_1_1_B + crit_1_2
+#E =~ crit_1_1+ crit_1_2
 
 S =~ crit_2_1 + crit_2_2
 #S =~ crit_2_1_A + crit_2_1_B+ crit_2_1_C +  crit_2_1_D+ crit_2_2_A + crit_2_2_B + crit_2_2_C
@@ -275,11 +275,18 @@ AC =~ crit_3_1 + crit_3_2
 # Regression paths capture hypothesized causal effects
 # S is regressed on E: captures the effect of exposure on sensitivity
 
-E ~S
-E  ~ AC
-S  ~ AC
 
-# crit_2_1 ~~   crit_3_1
+E  ~~ AC
+S  ~~ AC
+S~~E
+
+ #crit_2_2 ~~ crit_3_1
+ #crit_2_2 ~~ crit_3_2
+ #crit_2_1 ~~ crit_3_1
+# crit_1_1_B~~crit_3_2
+# crit_1_1_B~~crit_2_2
+# crit_1_1_A~~crit_3_2
+# crit_1_1_B~~crit_1_1_A
 
 '
 
@@ -292,9 +299,9 @@ fit_measures_sem <- fitMeasures(sem_result, fit.measures = desired_measures)
 fit_measures_sem
 
 # Plotting the SEM results
-semPaths(sem_result,  style = "lisrel", curvePivot = TRUE, layout = "tree",
-         what = "est",         # Show raw/unstandardized estimates
-         whatLabels = "est" )
+semPaths(sem_result,  style = "lisrel", curvePivot = TRUE, layout = "circle",
+         what = "std",         # Show raw/unstandardized estimates
+         whatLabels = "std" )
 
 lavInspect(sem_result, "cov.lv")
 
@@ -349,7 +356,7 @@ label_text_AC_E <- paste0("β = ", beta_AC_E, ", ", p_label_AC_E)
 
 B<- ggplot(df, aes(x = exposure_scaled, y = adaptive_capacity_scaled)) +
   geom_point(color = "grey50", size = 3, alpha = 0.6) +
-  geom_smooth(method = "lm", color = "darkgray", fill = "gray", se = TRUE) +
+  geom_smooth(method = "lm", color = "firebrick", fill = "firebrick", se = TRUE) +
   annotate("text", x = max(df$exposure_scaled)*0.3, y = max(df$adaptive_capacity_scaled)*0.9,
            label = label_text_AC_E, hjust = 0, size = 5) +
   theme_classic() +
@@ -490,6 +497,7 @@ df_long <- df_long %>%
       TRUE ~ metric
     )
   )
+
 
 # Boxplot with whiskers
 ggplot(df_long, aes(x = metric, y = value, fill = has_PAA)) +
