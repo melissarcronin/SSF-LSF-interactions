@@ -7,7 +7,7 @@
 #
 # Author: Melissa Cronin
 # Created: 2024-06-14
-# Last Updated: 2025-09-24
+# Last Updated: 2025-12-23
 #
 # Run Order:
 #   This is script 01 in the workflow:
@@ -23,7 +23,7 @@ rm(list = ls())
 # --- 2. Install and Load Packages -------------------------------------------
 required_packages <- c("here",
   # Data manipulation
-  "dplyr", "tidyr", "forcats", "countrycode","stringr", "countrycode","reshape2",
+  "dplyr", "tidyr", "forcats", "countrycode","stringr", "countrycode","reshape2","here",
   
   # Visualization
   "ggplot2", "viridis", "ggrepel", "scico", "patchwork", "cowplot","RColorBrewer",
@@ -200,7 +200,7 @@ ggplot() +
 
 ### 1_1 Construct composite index of intensity of nearshore large-scale fishing activity ####
 #pre-emplively filter all inpur data to only include data for which we have exposure data and MOST sensitivity data (see methods) this ensures that data are scaled from 0 to 1 with all countries that should be included
-country_list <- read.csv("country_list_from_all_components.csv")$Alpha.3.code
+country_list <- read.csv(here("data", "raw", "country_list_from_all_components.csv"))$Alpha.3.code
 
 #manually add data for a few countries that are reported separately. these decisions are made based on GFW precedent.
 eez_manual_iso <- tibble::tribble(
@@ -226,7 +226,7 @@ eez_manual_iso <- tibble::tribble(
   "Overlapping claim Peñón de Vélez de la Gomera: Spain","ESP"
 )
 
-gfw_raw <- read.csv(here("data", "activity_close_to_shore.csv"))
+gfw_raw <- read.csv(here("data", "raw", "activity_close_to_shore.csv"))
 
 gfw_raw <- gfw_raw %>%
   left_join(eez_manual_iso, by = "GEONAME") %>%   # <-- join manual mapping
@@ -319,7 +319,7 @@ shapiro.test(crit_1_1_data$crit_1_1)
 #####Calculate SSF catch scaled relative to nearshore area for each country ###########
 #THIS DATA IS CONFIDENTIAL AND CANNOT BE SHARED. Calculation details remain here to clarify how the data was used in the analysis.  
 
-ssf_catch<- read.csv("ssf_catch.csv", sep=",", header=TRUE) %>% 
+ssf_catch<- read.csv( here("data", "raw", "ssf_catch.csv"), sep=",", header=TRUE) %>% 
   filter(Marine_Inland_char=="Marine") %>% 
   rename( Alpha.3.code=country_ISO_alpha3) %>% 
   filter(Alpha.3.code %in% country_list) %>% 
