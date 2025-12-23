@@ -7,7 +7,7 @@
 #
 # Author: Melissa Cronin
 # Created: 2024-06-14
-# Last Updated: 2025-09-24
+# Last Updated: 2025-12-23
 #
 # Inputs:
 #   - data/SIFI_Index_data.csv
@@ -70,7 +70,7 @@ color_scale <- scale_fill_viridis_c(
 ###############################################################################
 
 colnames(df)
-df<- read.csv("data/SIFI_Index_data.csv", sep=",", header=T) %>%
+df<- read.csv(here("data", "processed", "SIFI_Index_data.csv"), sep=",", header=T) %>%
   dplyr::select(
     Alpha.3.code,
     exposure_scaled,
@@ -113,7 +113,7 @@ desired_measures <- c("cfi", "tli", "rmsea", "srmr", "chisq", "pvalue", "AIC", "
 colnames(df)
 # CFA model to idnetify important drivers of vulnerability 
 model_V <- '
-    vulnerability =~    crit_1_2+ crit_1_1_A + crit_1_1_B
+    vulnerability =~    crit_1_2+  crit_1_1_B+crit_1_1_A 
   vulnerability =~  crit_2_1 +crit_2_2 
   vulnerability =~ crit_3_1+ crit_3_2
   
@@ -122,7 +122,7 @@ crit_1_2 ~~ crit_1_1_B
 crit_2_1 ~~ crit_1_1_A
 
  '
-#png("/Users/melissacronin/Desktop/March_IHH_figures/vulnerability_cfa_sem_plot.png", width = 1600, height = 1200, res = 600) # Adjust size and resolution as needed
+png(here("outputs", "figures", "vulnerability_cfa_sem_plot.png"), width = 1600, height = 1200, res = 600) # Adjust size and resolution as needed
 
 cfa_model_V <- cfa(model_V, data=df, estimator="MLMV", bootstrap = 1000)
 
@@ -139,7 +139,7 @@ semPaths(cfa_model_V, what = "est",
          #                "Vulnerability"),
          sizeMan = 13, 
          sizeLat = 20,
-         sizeLat2=10, 
+         sizeLat2= 10, 
          sizeMan2=10,
          sizeInt2=1,
          #edge.color = ifelse(lavInspect(cfa_model_V, "std")$lambda > 0, "royalblue", "red3"), # Change colors based on sign
@@ -151,7 +151,7 @@ semPaths(cfa_model_V, what = "est",
            "red3"                 # negative association
          ) )
 
-
+dev.off()
 summary(cfa_model_V, fit.measures=TRUE,  standardized = TRUE)
 lavInspect(cfa_model_V, "theta")
 # Check the fit of the model
@@ -206,12 +206,15 @@ SIFI_map<-ggplot() +
   color_scale+
   labs(fill = "SIFI Index") +
   theme_void() +
-  theme(legend.position = "top", legend.text = element_text(size = 8), legend.title = element_text(size = 10))+
-  geom_hline(yintercept = 0,  color = "darkgrey", alpha = 0.5,  linewidth = 0.2) +  # Equator
-  geom_hline(yintercept = 23.5, linetype = "dashed",color = "darkgrey", alpha = 0.8, linewidth=0.2) +  # Tropic of Cancer
-  geom_hline(yintercept = -23.5, linetype = "dashed", color = "darkgrey", alpha = 0.8, linewidth = 0.2)  # Tropic of Capricorn
-
+  theme(legend.position = "top", legend.text = element_text(size = 8), legend.title = element_text(size = 10))
 SIFI_map
+
+ggsave(
+  here("outputs", "figures", "SIFI_map.tiff"),
+  device = "tiff",
+  dpi=300, width=8, height=6)
+
+
 # Scatter plot of the composite index against the simpler methods of calculating the SIFI Index
 plot(df$index_mean_scaled, df$SIFI_Index,
      xlab = "Mean(E, S, AC)", ylab = "CFA vulnerability score",
@@ -391,6 +394,12 @@ C<-ggplot(df, aes(x =  sensitivity_scaled, y=adaptive_capacity_scaled)) +
 
 A+C+B
 
+ggsave(
+  here("outputs", "figures", "component_lms.tiff"),
+  device = "tiff",
+  dpi=300, width=14, height=6)
+
+
 
 model_AC <- lm(adaptive_capacity_scaled ~ exposure_scaled + sensitivity_scaled, data = df)
 summary(model_AC)
@@ -429,14 +438,21 @@ P<-ggplot(df_subset, aes(x = country, y =SIFI_centered,fill = SIFI_Index)) +
   )+
   scale_x_discrete(expand = c(0.03, 0.03)) 
 P
-ggsave("countries_grouped.tiff", dpi=300, height=5, width=5)
+
+
+ggsave(
+  here("outputs", "figures", "SIFI_countries_grouped.tiff"),
+  device = "tiff",
+  dpi=300, height=10, width=5)
+
+
 
 ##########################################################################################################################
 #check if PAA is related to any of the variables using PAA data from Basurto et al. 2024
 ##########################################################################################################################
 
 
-paa_data<- read.csv("data/preferential_access_areas_Basurto_2024.csv", sep=",", header=T) %>% 
+paa_data<- read.csv(here("data", "raw", "preferential_access_areas_Basurto_2024.csv"), sep=",", header=T) %>% 
   rename(Alpha.3.code=Alpha_code_3) %>% as.data.frame()
 
 # Get vector of countries that have PAAs
@@ -469,7 +485,7 @@ run_tests <- function(var) {
 }
 
 # Run tests for each variable
-summary_table <- map_df(metrics, run_tests) %>% 
+paa_summary_table <- map_df(metrics, run_tests) %>% 
   mutate(
     metric = dplyr::case_when(
       metric == "exposure_scaled" ~ "Exposure",
@@ -478,7 +494,10 @@ summary_table <- map_df(metrics, run_tests) %>%
       TRUE ~ metric
     )
   )
-summary_table
+paa_summary_table
+
+write.csv( paa_summary_table,
+  here("outputs", "data_tables", "paa_summary_table.csv"))
 
 # Reshape data from wide to long for plotting
 df_long <- df %>%
@@ -518,5 +537,5 @@ ggplot(df_long, aes(x = metric, y = value, fill = has_PAA)) +
             inherit.aes = FALSE,
             size = 6)
 
-write.csv(df,"data/df_with_SIFI_score.csv")
+ggsave(here("outputs", "figures", "paa_components.tiff" ), dpi=300, height=6, width=8)
 
