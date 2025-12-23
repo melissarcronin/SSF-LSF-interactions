@@ -1,4 +1,4 @@
-# # SSF–LSF Interactions & SIFI Index
+# # SSF–LSF Interactions & SIFI Index 
 # 
 # This repository contains the data processing, index construction, and analysis code for the **Small-scale and Industrial Fisheries Interaction (SIFI) Index**, which quantifies country-level vulnerability to interactions between small-scale fisheries (SSFs) and large-scale / industrial fisheries (LSFs).
 # 
