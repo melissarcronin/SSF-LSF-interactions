@@ -516,7 +516,7 @@ crit_2_1_B_data<-employment_data %>%
   arrange(desc(crit_2_1_B_raw)) %>% 
   filter(fishers!=0) %>% 
   mutate(crit_2_1_B_log=log(fishers+1)/global_fishers) %>% 
-  mutate(crit_2_1_B= scales::rescale(crit_2_1_B_raw) )
+  mutate(crit_2_1_B= scales::rescale(crit_2_1_B_raw) ) 
 
 
 # plot
