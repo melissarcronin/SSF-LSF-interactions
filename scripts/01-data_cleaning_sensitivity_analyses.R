@@ -2,7 +2,7 @@
 # 01 Data cleaning and variable standardization
 # 
 # Description: 
-#   This script cleans and standardizes all SIFI Index data and constructs the SIFI Index.
+#   This script cleans and standardizes all SIFI Index data for the the SIFI Index.
 #     It is part of the SSF-LSF Interactions project.
 #
 # Author: Melissa Cronin
@@ -71,7 +71,7 @@ world_shp <- sf::st_as_sf(maps::map("world", plot = F, fill = TRUE))
 world_shp_df <- world_shp %>%
   mutate(Alpha.3.code = countrycode(ID, "country.name", "iso3c", warn = FALSE))
 
-coastal_buffer <- st_read(here("data","buffered_25km_GIS_files","resultLayer.shp")) %>%
+coastal_buffer <- st_read(here("data","raw","buffered_25km_GIS_files","resultLayer.shp")) %>%
   filter(sum_Area_S >= 1) %>%
   mutate(eez = str_replace(eez, " Exclusive Economic Zone", ""))
 
@@ -319,37 +319,44 @@ shapiro.test(crit_1_1_data$crit_1_1)
 #####Calculate SSF catch scaled relative to nearshore area for each country ###########
 #THIS DATA IS CONFIDENTIAL AND CANNOT BE SHARED. Calculation details remain here to clarify how the data was used in the analysis.  
 
-ssf_catch<- read.csv( here("data", "raw", "ssf_catch.csv"), sep=",", header=TRUE) %>% 
-  filter(Marine_Inland_char=="Marine") %>% 
-  rename( Alpha.3.code=country_ISO_alpha3) %>% 
-  filter(Alpha.3.code %in% country_list) %>% 
-  group_by(country, Alpha.3.code) %>% 
-  slice_head(n=1) %>%
-  dplyr::select(Alpha.3.code,country,national_catch_final ) %>% 
-  ungroup() %>% 
-  drop_na()
+# ssf_catch<- read.csv( here("data", "raw", "ssf_catch.csv"), sep=",", header=TRUE) %>% 
+#   filter(Marine_Inland_char=="Marine") %>% 
+#   rename( Alpha.3.code=country_ISO_alpha3) %>% 
+#   filter(Alpha.3.code %in% country_list) %>% 
+#   group_by(country, Alpha.3.code) %>% 
+#   slice_head(n=1) %>%
+#   dplyr::select(Alpha.3.code,country,national_catch_final ) %>% 
+#   ungroup() %>% 
+#   drop_na()
+# 
+# ssf_catch$national_catch_final<-round(ssf_catch$national_catch_final)
+# 
+# # gfw_data already contains the correct area_km2 from the nearshore fishing calc
+# gfw_area <- gfw_data %>%  
+#   dplyr::select(Alpha.3.code, nearshore_area)  # pull only the area field
+# 
+# # Join SSF catch to GFW area
+# ssf_catch_area <- ssf_catch %>% 
+#   left_join(gfw_area, by = "Alpha.3.code" )%>%  drop_na()
+# 
+# crit_1_2_data<- ssf_catch_area %>% 
+#   mutate(catch_per_area= log(national_catch_final)/log(nearshore_area)) %>% 
+#   rename(crit_1_2_raw= catch_per_area) %>% 
+#   mutate( crit_1_2 = scales::rescale(crit_1_2_raw, to = c(0, 1)) )%>% 
+#   filter(crit_1_2!="NA")
+# 
+# # Plot a histogram of normalized_crit_2_1_A
+# crit_1_2_histogram<-ggplot(crit_1_2_data) +
+#   geom_histogram(aes(x = crit_1_2)) 
+# 
+# shapiro.test(crit_1_2_data$crit_1_2)
+# 
+# write.csv(crit_1_2_data,
+#   here("data", "processed", "crit_1_2_data.csv"),
+#   row.names = FALSE
+# )
 
-ssf_catch$national_catch_final<-round(ssf_catch$national_catch_final)
-
-# gfw_data already contains the correct area_km2 from the nearshore fishing calc
-gfw_area <- gfw_data %>%  
-  dplyr::select(Alpha.3.code, nearshore_area)  # pull only the area field
-
-# Join SSF catch to GFW area
-ssf_catch_area <- ssf_catch %>% 
-  left_join(gfw_area, by = "Alpha.3.code" )%>%  drop_na()
-
-crit_1_2_data<- ssf_catch_area %>% 
-  mutate(catch_per_area= log(national_catch_final)/log(nearshore_area)) %>% 
-  rename(crit_1_2_raw= catch_per_area) %>% 
-  mutate( crit_1_2 = scales::rescale(crit_1_2_raw, to = c(0, 1)) )%>% 
-  filter(crit_1_2!="NA")
-
-# Plot a histogram of normalized_crit_2_1_A
-crit_1_2_histogram<-ggplot(crit_1_2_data) +
-  geom_histogram(aes(x = crit_1_2)) 
-
-shapiro.test(crit_1_2_data$crit_1_2)
+crit_1_2_data<-read.csv( here("data", "processed","crit_1_2_data.csv" ))
 
 ### Aggregate exposure variables #####
 
@@ -374,8 +381,8 @@ cor(exposure_data$crit_1_1,exposure_data$exposure_scaled)
 
 ggplot(exposure_data) +
   geom_col(aes(x = fct_reorder(Alpha.3.code, exposure_scaled), y = -crit_1_2), fill = "blue", position = "dodge") +
-  geom_col(aes(x = fct_reorder(Alpha.3.code, exposure_scaled), y = crit_1_1), fill = "pink", position = "dodge") +
   geom_col(aes(x = fct_reorder(Alpha.3.code, exposure_scaled), y = exposure_scaled) ,fill = "green", position = "dodge") +
+  geom_col(aes(x = fct_reorder(Alpha.3.code, exposure_scaled), y = crit_1_1), fill = "pink", position = "dodge") +
   coord_flip()
 
 ggplot(exposure_data) +
@@ -440,7 +447,7 @@ C<-  world_exposure %>%
   theme(legend.position="top")
 A+B+C
 
-#ggsave("Fig_2_exposure.tiff", dpi=300, height=4, width=18)
+ggsave( here("outputs", "figures", "Fig_2_exposure.tiff"), dpi=300, height=4, width=18)
 
 #check variable influence
 
@@ -474,7 +481,7 @@ exposure_means
 
 ### 2_1_A Contribution to SSF marine fisheries landed value (% of global marine SSF landed value, IHH) ######
 landed_value_data<-read.csv(
-  here("data", "landed_value_ssf.csv"),
+  here("data","raw", "landed_value_ssf.csv"),
   stringsAsFactors = FALSE) %>% 
   rename(Alpha.3.code=country_ISO_alpha3 ) %>% 
   filter(Alpha.3.code %in% country_list) 
@@ -495,7 +502,7 @@ crit_2_1_A_histogram<-ggplot(crit_2_1_A_data) +
 ### 2_1_B Contribution to SSF global marine fisheries employment (% of global marine SSF employment, IHH) ######
 #Description: Percent contribution of number of fishers by country to global employment in fisheries
 employment_data<- read.csv(  
-  here("data", "employment_ssf.csv"),
+  here("data","raw", "employment_ssf.csv"),
   stringsAsFactors = FALSE) %>%  
   rename(Alpha.3.code=country_ISO_alpha3 ) %>% 
   filter(Alpha.3.code %in% country_list) 
@@ -526,7 +533,7 @@ ssf_employment<-employment_data %>%
 ssf_employment$harvest_marine_SSF<-as.numeric(ssf_employment$harvest_marine_SSF)
 
 labor_data<- read.csv( 
-  here("data", "world_bank_employment_data.csv"),
+  here("data","raw", "world_bank_employment_data.csv"),
   stringsAsFactors = FALSE) %>% 
   rename(Alpha.3.code=Country.Code ) %>% 
   filter(Alpha.3.code %in% country_list) 
@@ -607,12 +614,12 @@ crit_2_1_data <-crit_2_1_A_data %>%
 ### 2_2_A Contribution to marine SSF production within country (kg/  coastal cap /yr, IHH) [for coastal population within 100 km]####
 
 coastal_population<-read.csv( 
-  here("data", "coastal_population.csv"),
+  here("data","raw", "coastal_population.csv"),
   stringsAsFactors = FALSE) %>% 
   rename(Alpha.3.code =country_ISO_alpha3) %>% 
   filter(Alpha.3.code %in% country_list)
 
-crit_2_2_A_data<- ssf_catch %>% 
+crit_2_2_A_data<-crit_1_2_data %>% 
   dplyr::left_join(coastal_population, by = c("Alpha.3.code") ) %>% 
   filter(coastal_population!=0) %>% 
   mutate(ssf_catch_kg = national_catch_final * 1000) %>% 
@@ -627,7 +634,7 @@ crit_2_2_A_histogram<-ggplot(crit_2_2_A_data) +
 #2.2_B Quality: Nutrient supply of catch (iron, zinc, calcium, vitamin A) for coastal residents [compiled domestic proportions that would meet 25% RDI for coastal population]
 
 nutrition_data<-  read.csv( 
-    here("data", "nutrition_data.csv"),
+    here("data", "raw","nutrition_data.csv"),
     stringsAsFactors = FALSE) %>% 
   filter(marine_inland_char=="marine") %>% 
   mutate(Continent = countrycode(
@@ -657,7 +664,7 @@ shapiro.test(crit_2_2_B_data$crit_2_2_B)
 #Prevalence of inadequate micronutrient intake  (Beale et al 2017) 
 
 crit_2_2_C_data<-read.csv( 
-  here("data", "prevalence_micronutrient_deficiency.csv"), stringsAsFactors = FALSE) %>% 
+  here("data","raw", "prevalence_micronutrient_deficiency.csv"), stringsAsFactors = FALSE) %>% 
                            rename(Alpha.3.code=ISO3) %>% 
   filter(Alpha.3.code %in% country_list) %>% 
   dplyr::select(Alpha.3.code,  PIMII.without.Fortification) %>% 
@@ -724,7 +731,7 @@ sensitivity_data_original<- crit_2_1_data %>%
 ### 3_1 HDI ####
 
 hdi<-read.csv( 
-  here("data", "hdi_time_series.csv"),
+  here("data","raw", "hdi_time_series.csv"),
   stringsAsFactors = FALSE) %>% 
   rename(Alpha.3.code=country_ISO_alpha3) %>% 
   dplyr::select(Alpha.3.code, country,
@@ -746,7 +753,7 @@ shapiro.test(crit_3_1_data$crit_3_1)
 #Political Stability and Absence of Violence Estimate, Government Effectiveness Estimate, Regulatory Quality Estimate, Rule of law , Voice and accountability
 
 governance<-read.csv( 
-  here("data", "governance_data.csv"),
+  here("data","raw", "governance_data.csv"),
   stringsAsFactors = FALSE) %>% 
   rename(Alpha.3.code=country_ISO_alpha3) %>% 
   filter(Alpha.3.code!="") %>% 
@@ -988,7 +995,8 @@ summary_table <- all_components %>%
   ) %>%   mutate(across(where(is.numeric), ~round(., 3)))
 
 summary_table
-write.csv(summary_table, "variable_summaries.csv")
+write.csv( summary_table,
+  here("outputs", "data_tables", "variable_summaries.csv"))
 
 #check simple methods of producing the SIFI Index
 df <- all_components %>%
@@ -1008,8 +1016,9 @@ df <- all_components %>%
     index_mean_scaled = scales::rescale(log(overall_index_mean+1), to = c(0, 1))
   ) 
 
+write.csv( df,
+           here("outputs", "data_tables", "data/SIFI_Index_data.csv"))
 
-write.csv(df, "data/SIFI_Index_data.csv")
 
 #these are countries for which we have ALL data.above, data are filtered already for these countries only so that 
 #they can be correctly scaled. 
@@ -1046,8 +1055,13 @@ crit_plot <- ggplot(crit_long, aes(x = value)) +
   )
 crit_plot
 
-#ggsave("crit_distribution.tiff", dpi=300, width=8, height=17)
-
+ggsave(
+  here("outputs", "figures", "crit_distribution.tiff"),
+  device = "tiff",
+  dpi = 300,
+  height = 4,
+  width = 18
+)
 
 # Create individual plots for each component
 plotA <- ggplot(df) +
@@ -1148,8 +1162,10 @@ B_plot <- plot_grid(plot1, plot2, plot3,  ncol = 3)
 A_plot / B_plot +plot_layout(heights=c(1,4))
 
 
-
-#ggsave("component_distribution.tiff", dpi=300, width=8, height=17)
+ggsave(
+  here("outputs", "figures", "component_distribution.tiff"),
+  device = "tiff",
+   dpi=300, width=8, height=17)
 
 
 
@@ -1285,7 +1301,10 @@ biplot_plot<- ggplot(biplot_data, aes(x = PC1, y = PC2, color = Variable)) +
 # Display the biplot and scree plot side by side
 biplot_plot+ scree_plot
 
-#ggsave("PCA_plotsa.tiff", dpi=300, width=10, height=7)
+ggsave(
+  here("outputs", "figures", "sensitivity_analysis.tiff"),
+  device = "tiff",
+  dpi = 300, width=10, height=7)
 
 
 
@@ -1345,5 +1364,8 @@ scale_fill_gradientn(
   theme(axis.text.x = element_text(angle = 45, hjust = 1))+
   theme(text=element_text(size=14))
 
-ggsave("correlation_plot_index.png", dpi=300, height=6, width=7)
+ggsave(
+  here("outputs", "figures", "correlation_plot_index.tiff"),
+  device = "tiff",
+  dpi=300, height=6, width=7)
 

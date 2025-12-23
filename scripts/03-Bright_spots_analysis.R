@@ -1,13 +1,13 @@
 
 ###############################################################################
-# 04 Bright spots analyses
+# 03 Bright spots analyses
 # 
 # Description: 
 #   This script uses the SIFI Index data to evaluate bright spot countries.
 #
 # Author: Melissa Cronin
 # Created: 2024-06-14
-# Last Updated: 2025-09-24
+# Last Updated: 2025-12-23
 #
 # Inputs:
 #   - data/SIFI_Index_data.csv
@@ -57,8 +57,7 @@ color_scale <- scale_fill_viridis_c(
 
 ###############################################################################
 
-colnames(df)
-df<- read.csv("data/df_with_SIFI_score.csv", sep=",", header=T) %>%
+df<- read.csv(here("data", "processed", "df_with_SIFI_score.csv"), sep=",", header=T)  %>%
   dplyr::select(
     Alpha.3.code,
     exposure_scaled,
@@ -81,12 +80,11 @@ df<- read.csv("data/df_with_SIFI_score.csv", sep=",", header=T) %>%
                                 destination = "continent")
   )
 
-paa_data<- read.csv("data/preferential_access_areas_Basurto_2024.csv", sep=",", header=T) %>% 
+paa_data<- read.csv(here( "data", "raw", "preferential_access_areas_Basurto_2024.csv"), sep=",", header=T) %>% 
   rename(Alpha.3.code=Alpha_code_3) %>% as.data.frame()
 
 # Get vector of countries that have PAAs
 paa_countries <- unique(paa_data$Alpha.3.code)
-
 
 bright_spot_deltas <- df %>%
   group_by(FAO.Subregion) %>%
@@ -168,6 +166,5 @@ ggplot(  aes(x = Country,
   )
 
 
-
-ggsave("brightspots_vulnerability.tiff", dpi=300, width=7, height=7)
+ggsave(here("outputs", "figures", "brightspots_vulnerability.tiff"), dpi=300, width=7, height=7)
 
