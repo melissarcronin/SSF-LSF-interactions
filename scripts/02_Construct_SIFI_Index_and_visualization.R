@@ -242,12 +242,12 @@ adaptive_capacity_map <- ggplot() +
   theme(legend.position = "top", legend.text = element_text(size = 8), legend.title = element_text(size = 10))
 
 exposure_map / sensitivity_map / adaptive_capacity_map
-
+  
 
 ggsave(
   here("outputs", "figures", "SIFI_component_map.tiff"),
   device = "tiff",
-  dpi=300, width=6, height=8)
+  dpi=300, width=6, height=9)
 
 
 # Scatter plot of the composite index against the simpler methods of calculating the SIFI Index
