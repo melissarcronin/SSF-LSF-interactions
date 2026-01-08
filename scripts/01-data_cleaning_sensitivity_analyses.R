@@ -1060,8 +1060,8 @@ ggsave(
   here("outputs", "figures", "crit_distribution.tiff"),
   device = "tiff",
   dpi = 300,
-  height = 4,
-  width = 18
+  height = 16,
+  width = 12
 )
 
 # Create individual plots for each component
@@ -1166,7 +1166,7 @@ A_plot / B_plot +plot_layout(heights=c(1,4))
 ggsave(
   here("outputs", "figures", "component_distribution.tiff"),
   device = "tiff",
-   dpi=300, width=8, height=17)
+   dpi=300, width=12, height=17)
 
 
 

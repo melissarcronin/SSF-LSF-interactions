@@ -166,5 +166,5 @@ ggplot(  aes(x = Country,
   )
 
 
-ggsave(here("outputs", "figures", "brightspots_vulnerability.tiff"), dpi=300, width=7, height=7)
+ggsave(here("outputs", "figures", "brightspots_vulnerability.tiff"), dpi=300, width=13, height=7)
 

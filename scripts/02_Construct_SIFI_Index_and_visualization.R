@@ -336,11 +336,18 @@ summary(sem_result, fit.measures = TRUE)
 fit_measures_sem <- fitMeasures(sem_result, fit.measures = desired_measures)
 fit_measures_sem
 
+
 # Plotting the SEM results
+png(here("outputs", "figures", "components_sem_plot.png"),  width = 4800, height = 3600, res = 600)
+
 semPaths(sem_result,  style = "lisrel", curvePivot = TRUE, layout = "circle",
          what = "std",         # Show raw/unstandardized estimates
-         whatLabels = "std" )
+         whatLabels = "std" ,
+         posCol = c("royalblue", "royalblue"),
+         negCol = c("red3", "red3")      
+)
 
+dev.off()
 lavInspect(sem_result, "cov.lv")
 
 mod_indices <- modificationindices(sem_result)
