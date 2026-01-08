@@ -122,34 +122,36 @@ crit_1_2 ~~ crit_1_1_B
 crit_2_1 ~~ crit_1_1_A
 
  '
-png(here("outputs", "figures", "vulnerability_cfa_sem_plot.png"), width = 1600, height = 1200, res = 600) # Adjust size and resolution as needed
-
+png(here("outputs", "figures", "vulnerability_cfa_sem_plot.png"),  width = 4800, height = 3600, res = 600)
 cfa_model_V <- cfa(model_V, data=df, estimator="MLMV", bootstrap = 1000)
 
 semPaths(cfa_model_V, what = "est", 
          whatLabels = "std",
-         curvePivot = TRUE,
+         #curvePivot = TRUE,
          layout = "tree",  style = "ram",
-         # nodeLabels = c( "SSF catch",
-         #                  "AIS broadcasting LSF density",
-         #                  "Non-broadcasting LSF density",
-         #                    "SSF economic value",
-         #                   "SSF nutrition",
-         #                   "development","governance",
-         #                "Vulnerability"),
+          nodeLabels = c( "SSF catch",
+                          "Non-broadcasting LSF density",
+                           "AIS broadcasting LSF density",
+                             "SSF economic value",
+                            "SSF nutrition",
+                            "development","governance",
+                         "Vulnerability"),
          sizeMan = 13, 
          sizeLat = 20,
-         sizeLat2= 10, 
+         sizeLat2= 5, 
          sizeMan2=10,
-         sizeInt2=1,
+         residuals = FALSE,
+         sizeInt2=1, 
+         fade = FALSE,
          #edge.color = ifelse(lavInspect(cfa_model_V, "std")$lambda > 0, "royalblue", "red3"), # Change colors based on sign
-         nCharNodes = 0.5, # To reduce the space between nodes, set to 0 or adjust as necessary
-         edge.label.cex = 2,
+         nCharNodes = 0.8, # To reduce the space between nodes, set to 0 or adjust as necessary
+         edge.label.cex = 0.8,
          edge.color = ifelse(
            lavInspect(cfa_model_V, "std")$lambda > 0,
            "royalblue",           # positive association
            "red3"                 # negative association
          ) )
+
 
 dev.off()
 summary(cfa_model_V, fit.measures=TRUE,  standardized = TRUE)
@@ -213,6 +215,39 @@ ggsave(
   here("outputs", "figures", "SIFI_map.tiff"),
   device = "tiff",
   dpi=300, width=8, height=6)
+
+
+exposure_map<- ggplot() +
+  geom_sf(data = world_shp_iso , fill = "gray", color = "lightgrey") +
+  geom_sf(data=df_spatial, aes(fill =exposure_scaled), color = "lightgrey")+
+  color_scale+
+  labs(fill = "Exposure") +
+  theme_void() +
+  theme(legend.position = "top", legend.text = element_text(size = 8), legend.title = element_text(size = 10))
+
+sensitivity_map <- ggplot() +
+  geom_sf(data = world_shp_iso , fill = "gray", color = "lightgrey") +
+  geom_sf(data=df_spatial, aes(fill =sensitivity_scaled), color = "lightgrey")+
+  color_scale+
+  labs(fill = "Sensitivity") +
+  theme_void() +
+  theme(legend.position = "top", legend.text = element_text(size = 8), legend.title = element_text(size = 10))
+
+adaptive_capacity_map <- ggplot() +
+  geom_sf(data = world_shp_iso , fill = "gray", color = "lightgrey") +
+  geom_sf(data=df_spatial, aes(fill =adaptive_capacity_scaled), color = "lightgrey")+
+  color_scale+
+  labs(fill = "Adaptive capacity") +
+  theme_void() +
+  theme(legend.position = "top", legend.text = element_text(size = 8), legend.title = element_text(size = 10))
+
+exposure_map / sensitivity_map / adaptive_capacity_map
+
+
+ggsave(
+  here("outputs", "figures", "SIFI_component_map.tiff"),
+  device = "tiff",
+  dpi=300, width=6, height=8)
 
 
 # Scatter plot of the composite index against the simpler methods of calculating the SIFI Index

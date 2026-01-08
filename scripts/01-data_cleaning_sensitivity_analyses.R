@@ -283,7 +283,8 @@ crit_1_1_data <- gfw_data %>%
     crit_1_1_A = scales::rescale(crit_1_1_A_raw, to = c(0, 1)),
     crit_1_1_B = scales::rescale(crit_1_1_B_raw, to = c(0, 1))) %>%
   # Combined LSF nearshore exposure indicator weighted for representation of each LSF type 
-  mutate( crit_1_1 = ais_share_global * crit_1_1_A + nonbroadcasting_share_global * crit_1_1_B )
+  mutate( crit_1_1 = ais_share_global * crit_1_1_A + nonbroadcasting_share_global * crit_1_1_B ) %>% 
+  mutate(crit_1_1_log=log(crit_1_1+1))
 
 crit_1_1_data %>%
   ggplot()+
@@ -424,7 +425,7 @@ A<-  world_exposure %>%
   geom_sf( aes( fill= crit_1_1), color="lightgrey") +
   scale_fill_viridis_c(option="magma", direction=-1,  limits=c(0,1), breaks=c(0,0.5,1))+
   labs( fill="Nearshore density of LSF") +
-  theme_classic()+
+  theme_void()+
   theme(legend.position="top",
         legend.key.size = unit(0.5, "cm"))
 A
@@ -434,7 +435,7 @@ B<-  world_exposure %>%
   geom_sf(aes( fill= crit_1_2), color="lightgrey") +
   scale_fill_viridis_c(option="magma", direction=-1,limits=c(0,1), breaks=c(0,0.5,1))+
   labs(fill="SSF catch (kg) / nearshore area km^2") +
-  theme_classic()+  
+  theme_void()+  
   theme(legend.position="top")
 B
 C<-  world_exposure %>% 
@@ -443,11 +444,11 @@ C<-  world_exposure %>%
   geom_sf( aes( fill= exposure_scaled), color="lightgrey") +
   scale_fill_viridis_c(option="magma", direction=-1,limits=c(0,1), breaks=c(0,0.5,1))+
   labs(fill="Exposure") +
-  theme_classic()+  
+  theme_void()+  
   theme(legend.position="top")
-A+B+C
+A/B/C
 
-ggsave( here("outputs", "figures", "Fig_2_exposure.tiff"), dpi=300, height=4, width=18)
+ggsave( here("outputs", "figures", "Fig_2_exposure.tiff"), dpi=300, height=10, width=6)
 
 #check variable influence
 
