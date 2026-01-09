@@ -28,7 +28,7 @@ required_packages <- c(
   "here", "scales", "gridExtra", "grid", "stringr",
  
   "dplyr", "tidyr", "forcats", "countrycode", "psych", "likert",
-  "broom", "purrr",
+  "broom", "purrr","ggpattern",
   "ggplot2", "viridis", "ggrepel", "scico", "patchwork", "cowplot", "ggpubr", "plotly",
   
   # Mapping
@@ -546,7 +546,13 @@ df_long <- df %>%
   dplyr::select(has_PAA, exposure_scaled, sensitivity_scaled, adaptive_capacity_scaled) %>%
   pivot_longer(cols = c(exposure_scaled, sensitivity_scaled, adaptive_capacity_scaled),
                names_to = "metric",
-               values_to = "value")
+               values_to = "value") %>% 
+  mutate(
+    PAA = factor(
+      ifelse(has_PAA == "TRUE" | has_PAA == "Has PAA", "Has PAA", "No PAA"),
+      levels = c("Has PAA", "No PAA")
+    )
+  )
 
 # labels 
 df_long <- df_long %>%
@@ -560,24 +566,39 @@ df_long <- df_long %>%
   )
 
 
-# Boxplot with whiskers
-ggplot(df_long, aes(x = metric, y = value, fill = has_PAA)) +
-    geom_jitter(alpha=0.3)+
-   geom_boxplot(alpha = 0.8) +
-  theme_classic() +
-  labs(x = "Component of vulnerability", y = "Scaled value", fill = "PAA status") +
-  theme(
-    text = element_text(size = 14),
-    axis.text.x = element_text(size = 13, angle = 20, hjust = 1)
-  )+
-  geom_text(data = summary_table,
-            aes(x = metric,
-                y = max(df_long$value) + 0.05,   # adjust if needed
-                label = ifelse(p_value < .001, "***",
-                               ifelse(p_value < .01, "**",
-                                      ifelse(p_value < .05, "*", "ns")))),
-            inherit.aes = FALSE,
-            size = 6)
+component_colors <- c(
+  "Exposure"          = "#D55E00",
+  "Sensitivity"       = "royalblue",
+  "Adaptive Capacity" = "lightblue"
+)
 
-ggsave(here("outputs", "figures", "paa_components.tiff" ), dpi=300, height=6, width=8)
+
+ggplot(df_long, aes(x = metric, y = value, fill=has_PAA)) +
+  geom_jitter(
+    aes(color = metric, group = has_PAA),
+    alpha = 0.25,
+    width = 0.15,
+    size = 1,
+    show.legend = FALSE
+  ) +
+  geom_boxplot(
+    aes(fill = metric,group = interaction(metric, has_PAA)),
+    alpha = 0.8,
+    outlier.shape = NA,
+    position = position_dodge(width = 0.8)
+  ) +
+  scale_fill_manual(values = component_colors) +
+  scale_color_manual(values = component_colors) +
+  theme_classic() +
+  labs(
+    x = "Component of vulnerability",
+    y = "Scaled value",
+    fill = "Component"
+  ) +
+  theme( text = element_text(size = 14), 
+         axis.text.x = element_text(size = 13, angle = 20, hjust = 1) )+ 
+  geom_text(data = paa_summary_table, aes(x = metric, y = max(df_long$value) + 0.05, # adjust if needed 
+            label = ifelse(p_value < .001, "***", ifelse(p_value < .01, "**", ifelse(p_value < .05, "*", "ns")))), inherit.aes = FALSE, size = 6)
+
+
 
