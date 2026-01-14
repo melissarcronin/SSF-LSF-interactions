@@ -338,7 +338,7 @@ fit_measures_sem
 
 
 # Plotting the SEM results
-png(here("outputs", "figures", "components_sem_plot.png"),  width = 4800, height = 3600, res = 600)
+#png(here("outputs", "figures", "components_sem_plot.png"),  width = 4800, height = 3600, res = 600)
 
 semPaths(sem_result,  style = "lisrel", curvePivot = TRUE, layout = "circle",
          what = "std",         # Show raw/unstandardized estimates
@@ -347,7 +347,7 @@ semPaths(sem_result,  style = "lisrel", curvePivot = TRUE, layout = "circle",
          negCol = c("red3", "red3")      
 )
 
-dev.off()
+#dev.off()
 lavInspect(sem_result, "cov.lv")
 
 mod_indices <- modificationindices(sem_result)
@@ -445,6 +445,48 @@ ggsave(
 
 model_AC <- lm(adaptive_capacity_scaled ~ exposure_scaled + sensitivity_scaled, data = df)
 summary(model_AC)
+
+
+# Mediation analysis: Does exposure mediate the effect of sensitivity on adaptive capacity?
+# Requires: df with columns adaptive_capacity_scaled, exposure_scaled, sensitivity_scaled
+
+# Install/load packages
+if (!requireNamespace("mediation", quietly = TRUE)) install.packages("mediation")
+library(mediation)
+
+# Mediator model: sensitivity ~ exposure
+model_M2 <- lm(sensitivity_scaled ~ exposure_scaled, data = df)
+
+# Outcome model: adaptive capacity ~ sensitivity + exposure
+model_Y2 <- lm(adaptive_capacity_scaled ~ sensitivity_scaled + exposure_scaled, data = df)
+
+# 3) Mediation test via nonparametric bootstrap (recommended)
+set.seed(123)
+med_out <- mediation::mediate(
+  model.m = model_M,
+  model.y = model_Y,
+  treat   = "exposure_scaled",
+  mediator= "sensitivity_scaled",
+  boot    = TRUE,
+  sims    = 5000
+)
+
+# 4) Summaries
+summary(model_M)
+summary(model_Y)
+summary(med_out)
+
+# 5) Optional: quick plot of effects
+plot(med_out)
+
+# 6) Optional: extract key quantities neatly
+out <- data.frame(
+  effect = c("ACME (indirect)", "ADE (direct)", "Total effect", "Proportion mediated"),
+  estimate = c(med_out$d0, med_out$z0, med_out$tau.coef, med_out$n0),
+  ci_low  = c(med_out$d0.ci[1], med_out$z0.ci[1], med_out$tau.ci[1], med_out$n0.ci[1]),
+  ci_high = c(med_out$d0.ci[2], med_out$z0.ci[2], med_out$tau.ci[2], med_out$n0.ci[2])
+)
+print(out, row.names = FALSE)
 
 
 
@@ -602,3 +644,8 @@ ggplot(df_long, aes(x = metric, y = value, fill=has_PAA)) +
 
 
 
+ggsave(
+  here("outputs", "figures", "PAA_components_comparison.tiff"),
+  device = "tiff",
+  dpi=300, height=6, width=8)
+            
