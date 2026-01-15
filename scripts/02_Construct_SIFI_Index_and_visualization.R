@@ -483,67 +483,95 @@ ggsave(
 
 cor(df$index_mean_scaled, df$cfa_vulnerability_score)
 
-colnames(df)
+
+
 #add grouped bars by CONTINENTS
-selected_columns <- c("ID", "SIFI_Index", "Continent")
-# Subset the data frame
-df_subset <- df[selected_columns]
-df_subset$country <- factor(df_subset$country, levels = unique(df_subset$country[order(df_subset$Continent)]))
-region_order <- c( "Europe/Asia", "Europe","Oceania","Americas","Asia", "Africa" )
 
-# Order the levels of FAO.Region
-df_subset$Continent <- factor(df_subset$Continent, levels = region_order)
-df_subset$country<- factor(df_subset$country, levels = unique(df_subset$country[order(df_subset$Continent, df_subset$SIFI_Index)]))
-df_subset <- df_subset %>%
-  mutate(SIFI_centered = SIFI_Index - 0.5)
-
-P<-ggplot(df_subset, aes(x = country, y =SIFI_centered,fill = SIFI_Index)) +
-  geom_bar(stat = "identity", position = "dodge") +
-  labs(x = "Country", y = "SIFI Index of Vulnerability") +
-  theme_classic() +
-  color_scale+
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  theme(legend.position = "none") +  
-  coord_flip() +  # Flip coordinates
-  scale_y_continuous(
-    limits = c(-0.5, 0.5),
-    breaks = c(-0.5, -0.25, 0, 0.25, 0.5),
-    labels = c("0", "0.25", "0.5", "0.75", "1.0")   # artificial SIFI scale
-  ) +
-  theme(
-    text = element_text(size = 14),
-    axis.text.y = element_text(size = 6)
-  )+
-  scale_x_discrete(expand = c(0.03, 0.03)) 
-P
-
-
-ggsave(
-  here("outputs", "figures", "SIFI_countries_grouped.tiff"),
-  device = "tiff",
-  dpi=300, height=10, width=5)
 
 #examine contintent differences 
 df_geo <- df %>%
-  mutate(
-    country_name = ifelse(!is.na(country) & country != "", country,
-                          countrycode(Alpha.3.code, "iso3c", "country.name.en")),
-    un_subregion = countrycode(Alpha.3.code, "iso3c", "un.regionsub.name"),
-    continent_raw = countrycode(Alpha.3.code, "iso3c", "continent"),
-    continent2 = case_when(
-      continent_raw == "Americas" & un_subregion == "South America" ~ "South America",
-      continent_raw == "Americas" & un_subregion == "Northern America" ~ "North America",
-      continent_raw == "Americas" ~ "Central America & Caribbean",
-      TRUE ~ continent_raw
-    )
-  )
-colnames(df_geo)
+    mutate(
+      country_name = ifelse(
+        !is.na(country) & country != "",
+        country,
+        countrycode(Alpha.3.code, "iso3c", "country.name.en")    ),
+      un_subregion  = countrycode(Alpha.3.code, "iso3c", "un.regionsub.name"),
+      continent_raw = countrycode(Alpha.3.code, "iso3c", "continent"),
+      Continent2 = case_when(
+        continent_raw == "Americas" & un_subregion == "Northern America" ~
+          "North America",
+        continent_raw == "Americas" & un_subregion == "Latin America and the Caribbean" ~
+          "Central & South America",
+        continent_raw == "Americas" ~
+          "Central & South America",  # fallback if any odd Americas cases
+        TRUE ~ continent_raw))
 metrics <- c(
   "SIFI_Index",
   "exposure_scaled",
   "sensitivity_scaled",
   "adaptive_capacity_inverse_scaled"
 )
+
+df_subset<-df_geo %>%
+  dplyr::select(country, SIFI_Index, Continent2) %>%
+  mutate(
+    Continent2 = factor(
+      Continent2,
+      levels = c("Africa", "Asia",  "Oceania", "Central & South America","Europe", "North America")
+    )
+  ) %>%
+  arrange(Continent2, SIFI_Index) %>%
+  mutate(
+    country = factor(country, levels = unique(country)),
+    SIFI_centered = SIFI_Index - 0.5
+  )
+
+unique(df_geo$Continent2)
+# --- plot (same style as yours) ---
+P <- ggplot(df_subset, aes(x = country, y = SIFI_centered, fill = SIFI_Index)) +
+  geom_col() +
+  labs(x = "Country", y = "SIFI Index of Vulnerability") +
+  theme_classic() +
+  color_scale +                        # keep your existing fill scale object
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme(legend.position = "none") +
+  coord_flip() +
+  scale_y_continuous(
+    limits = c(-0.5, 0.5),
+    breaks = c(-0.5, -0.25, 0, 0.25, 0.5),
+    labels = c("0", "0.25", "0.5", "0.75", "1.0")
+  ) +
+  theme(
+    text = element_text(size = 16),
+  strip.background = element_rect(fill = "grey92", color = "grey80"),
+    axis.text.y = element_text(size = 8)
+  ) +
+  theme(
+    panel.border = element_rect(color = "grey80", fill = NA, linewidth = 0.4),
+    panel.spacing = unit(0.8, "lines")
+  )+theme(
+    strip.text.y = element_text(
+      angle = 0,        # vertical text
+      size = 10,
+      vjust = 0.5
+    ),
+    strip.background = element_rect(fill = "grey92", color = "grey80"),
+    panel.border = element_rect(color = "grey80", fill = NA, linewidth = 0.4),
+    panel.spacing.y = unit(0.8, "lines")
+  )+
+  scale_x_discrete(expand = c(0.03, 0.03)) +
+  facet_grid(Continent2 ~ ., scales = "free_y", space = "free_y",   labeller = labeller(Continent2 = label_wrap_gen(width = 14))
+  )   
+
+P
+
+
+ggsave(
+  here("outputs", "figures", "SIFI_countries_grouped.tiff"),
+  device = "tiff",
+  dpi=300, height=14, width=8)
+
+
 
 
 plot_df <- df_geo %>%
@@ -620,7 +648,8 @@ plot_sub <- df_geo %>%
       "Central & South America",
       continent2
     )
-  ) %>%
+  ) %>%  
+ rename(Subregion = un_subregion)%>%
   dplyr::select(
     country_name,
     continent2,   # <-- keep continent for fill later
@@ -680,6 +709,86 @@ ggsave(
   here("outputs", "figures", "SI_continents_scores.tiff"),
   device = "tiff",
   dpi=300, height=14, width=11)
+
+
+
+# ---- build country-level heat plot for SI  ----
+
+
+metrics <- c(
+  "exposure_scaled",
+  "sensitivity_scaled",
+  "adaptive_capacity_inverse_scaled",
+  "SIFI_Index"
+)
+
+df_heat <- df_geo %>%
+  mutate(
+    un_subregion = countrycode(Alpha.3.code, "iso3c", "un.regionsub.name"),
+    Continent2 = case_when(
+      Continent == "Americas" & un_subregion == "Latin America and the Caribbean" ~
+        "Central & South America",
+      Continent == "Americas" & un_subregion == "Northern America" ~
+        "North America",
+      TRUE ~ Continent
+    )
+  ) %>%
+  dplyr::select(country, Continent2, all_of(metrics)) %>%
+  pivot_longer(
+    cols = all_of(metrics),
+    names_to = "metric",
+    values_to = "score"
+  ) %>%
+  filter(!is.na(score), !is.na(country), !is.na(Continent2)) %>%
+  group_by(Continent2) %>%
+  mutate(sifi_rank = ifelse(metric == "SIFI_Index", score, NA_real_)) %>%
+  tidyr::fill(sifi_rank, .direction = "downup") %>%
+  arrange(desc(sifi_rank), .by_group = TRUE) %>%
+  mutate(country_f = factor(country, levels = rev(unique(country)))) %>%
+  ungroup()
+
+p_ext2 <- ggplot(df_heat, aes(x = metric, y = country_f, fill = score)) +
+  geom_tile(color = "white", linewidth = 0.25) +
+  facet_wrap(~ Continent2, scales = "free_y", nrow = 1,
+             labeller = labeller(Continent2 = label_wrap_gen(width = 12))) +
+  scale_fill_viridis_c(
+    option = "magma",
+    direction = -1,
+    limits = c(0, 1),breaks = c(0, 1),
+    labels = c("0", "1")
+  ) +
+  scale_x_discrete(
+    limits = c(
+      "exposure_scaled",
+      "sensitivity_scaled",
+      "adaptive_capacity_inverse_scaled",
+      "SIFI_Index"
+    ),
+    labels = c(
+      "Exposure",
+      "Sensitivity",
+      "Adaptive capacity",
+      "SIFI index"
+    )
+  ) +
+  labs(x = NULL, y = "Country", fill="Score") +
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.grid = element_blank(),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    strip.text = element_text(face = "bold"),
+    strip.background = element_rect(fill = "grey92", color = NA),
+    legend.position = "bottom"
+  )
+
+p_ext2
+
+ggsave(
+  here("outputs", "figures", "SI_country_level_scores.tiff"),
+  device = "tiff",
+  dpi=300, height=8, width=12)
+
+
 
 
 ##########################################################################################################################
