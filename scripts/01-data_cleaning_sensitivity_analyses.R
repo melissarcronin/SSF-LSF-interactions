@@ -1180,16 +1180,44 @@ cat("Correlation between Mean and Sum indices:", cor_mean_sum, "\n")
 cat("Correlation between Mean and Product indices:", cor_mean_prod, "\n")
 cat("Correlation between Sum and Product indices:", cor_sum_prod, "\n")
 
-#### sum stats and sensitivity ######
-df_sum_stats<-df %>%
-  ungroup() %>% 
-  summarise(mean_exposure= mean(exposure_scaled),
-             mean_sensitivity= mean(sensitivity_scaled, na.rm = TRUE),
-            mean_adaptive_capacity= mean(adaptive_capacity_inverse_scaled, na.rm = TRUE),
-           mean_prod_index= mean(index_prod_scaled , na.rm = TRUE),
-           mean_sum_index= mean(index_sum_scaled , na.rm = TRUE))
+#### sum stats ######
 
-df_sum_stats
+df_summary_stats <- df %>%
+  dplyr::select(
+    exposure_scaled,
+    sensitivity_scaled,
+    adaptive_capacity_inverse_scaled,
+    starts_with("crit_"),
+    -ends_with("_raw")) %>% 
+  pivot_longer(
+    cols = everything(),
+    names_to = "Driver_Component",
+    values_to = "value"
+  ) %>%
+  group_by(Driver_Component) %>%
+  summarise(
+    Mean   = mean(value, na.rm = TRUE),
+    Median = median(value, na.rm = TRUE),
+    Min    = min(value, na.rm = TRUE),
+    Max    = max(value, na.rm = TRUE),
+    SD     = sd(value, na.rm = TRUE),
+    .groups = "drop"
+  ) %>% mutate(
+    Driver_Component = Driver_Component %>%
+      str_replace("_inverse_scaled$", "") %>%
+      str_replace("_scaled$", "") %>%
+      str_replace("^index_", "Index ") %>%
+      str_replace("_", " ") %>%
+      str_to_title())
+  
+
+df_summary_stats
+write.csv(
+  df_summary_stats,
+  here("outputs", "data_tables", "summary_statistics_components_drivers_crits.csv"),
+  row.names = FALSE
+)
+
 
 # Calculate quartiles for normalized_overall_index
 quartiles <- quantile(df$index_prod_scaled, probs = c(0, 0.25, 0.5, 0.75, 1),  na.rm=TRUE)

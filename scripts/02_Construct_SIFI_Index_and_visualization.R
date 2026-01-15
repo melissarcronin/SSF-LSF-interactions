@@ -289,7 +289,19 @@ ggplot(loadings_df, aes(x = factor, y = loading, fill = variable)) +
 #In a CFA model, each latent variable is associated with a set of observed variables, and the factor loadings indicate 
 #how much each observed variable contributes to the corresponding latent factor.
 
-
+# make table for supplement
+pe_cfa <- parameterEstimates(cfa_model_V, standardized = TRUE) %>%
+  filter(op == "=~") %>%
+  transmute(
+    Model = "CFA (measurement model)",
+    Latent = lhs,
+    Indicator = rhs,
+    Est = est,
+    SE = se,
+    z = z,
+    p = pvalue,
+    Std = std.all
+  )
 
 # SEM Model Specification
 #examine relationships between constructs 
@@ -357,6 +369,32 @@ mod_indices <- mod_indices[order(mod_indices$mi, decreasing = TRUE), ]
 
 # View top 10 suggested modifications
 head(mod_indices, 10)
+
+#make table for supplement
+
+
+pe_sem <- parameterEstimates(sem_result, standardized = TRUE) %>%
+  filter(op == "=~") %>%
+  transmute(
+    Model = "SEM (measurement portion)",
+    Latent = lhs,
+    Indicator = rhs,
+    Est = est,
+    SE = se,
+    z = z,
+    p = pvalue,
+    Std = std.all
+  )
+
+#join tables for both models 
+
+loadings_cfa_sem <- bind_rows(pe_cfa, pe_sem) %>%
+  arrange(Latent, Indicator, Model)
+
+# Save + display
+write.csv(loadings_cfa_sem, here("outputs", "data_tables", "factor_loadings_CFA_vs_SEM.csv"), row.names = FALSE)
+
+
 
 
 
@@ -443,55 +481,11 @@ ggsave(
 
 
 
-model_AC <- lm(adaptive_capacity_scaled ~ exposure_scaled + sensitivity_scaled, data = df)
-summary(model_AC)
+cor(df$index_mean_scaled, df$cfa_vulnerability_score)
 
-
-# Mediation analysis: Does exposure mediate the effect of sensitivity on adaptive capacity?
-# Requires: df with columns adaptive_capacity_scaled, exposure_scaled, sensitivity_scaled
-
-# Install/load packages
-if (!requireNamespace("mediation", quietly = TRUE)) install.packages("mediation")
-library(mediation)
-
-# Mediator model: sensitivity ~ exposure
-model_M2 <- lm(sensitivity_scaled ~ exposure_scaled, data = df)
-
-# Outcome model: adaptive capacity ~ sensitivity + exposure
-model_Y2 <- lm(adaptive_capacity_scaled ~ sensitivity_scaled + exposure_scaled, data = df)
-
-# 3) Mediation test via nonparametric bootstrap (recommended)
-set.seed(123)
-med_out <- mediation::mediate(
-  model.m = model_M,
-  model.y = model_Y,
-  treat   = "exposure_scaled",
-  mediator= "sensitivity_scaled",
-  boot    = TRUE,
-  sims    = 5000
-)
-
-# 4) Summaries
-summary(model_M)
-summary(model_Y)
-summary(med_out)
-
-# 5) Optional: quick plot of effects
-plot(med_out)
-
-# 6) Optional: extract key quantities neatly
-out <- data.frame(
-  effect = c("ACME (indirect)", "ADE (direct)", "Total effect", "Proportion mediated"),
-  estimate = c(med_out$d0, med_out$z0, med_out$tau.coef, med_out$n0),
-  ci_low  = c(med_out$d0.ci[1], med_out$z0.ci[1], med_out$tau.ci[1], med_out$n0.ci[1]),
-  ci_high = c(med_out$d0.ci[2], med_out$z0.ci[2], med_out$tau.ci[2], med_out$n0.ci[2])
-)
-print(out, row.names = FALSE)
-
-
-
+colnames(df)
 #add grouped bars by CONTINENTS
-selected_columns <- c("country", "SIFI_Index", "Continent")
+selected_columns <- c("ID", "SIFI_Index", "Continent")
 # Subset the data frame
 df_subset <- df[selected_columns]
 df_subset$country <- factor(df_subset$country, levels = unique(df_subset$country[order(df_subset$Continent)]))
@@ -529,6 +523,163 @@ ggsave(
   device = "tiff",
   dpi=300, height=10, width=5)
 
+#examine contintent differences 
+df_geo <- df %>%
+  mutate(
+    country_name = ifelse(!is.na(country) & country != "", country,
+                          countrycode(Alpha.3.code, "iso3c", "country.name.en")),
+    un_subregion = countrycode(Alpha.3.code, "iso3c", "un.regionsub.name"),
+    continent_raw = countrycode(Alpha.3.code, "iso3c", "continent"),
+    continent2 = case_when(
+      continent_raw == "Americas" & un_subregion == "South America" ~ "South America",
+      continent_raw == "Americas" & un_subregion == "Northern America" ~ "North America",
+      continent_raw == "Americas" ~ "Central America & Caribbean",
+      TRUE ~ continent_raw
+    )
+  )
+colnames(df_geo)
+metrics <- c(
+  "SIFI_Index",
+  "exposure_scaled",
+  "sensitivity_scaled",
+  "adaptive_capacity_inverse_scaled"
+)
+
+
+plot_df <- df_geo %>%
+  mutate(
+    continent2 = ifelse(
+      continent2 %in% c("Central America & Caribbean", "South America"),
+      "Central & South America",
+      continent2
+    )
+  ) %>%
+  dplyr::select(country_name, continent2, all_of(metrics)) %>%
+  pivot_longer(
+    cols = all_of(metrics),
+    names_to = "metric",
+    values_to = "value"
+  ) %>%
+  filter(!is.na(value), !is.na(continent2)) %>%
+  mutate(
+    continent2 = factor(continent2, levels = c(
+      "Africa", "Asia", "Europe", "Oceania",
+      "North America", "Central & South America"
+    ))
+  ) %>% 
+  mutate(
+    metric = factor(
+      metric,
+      levels = c(
+        "SIFI_Index",
+        "exposure_scaled",
+        "sensitivity_scaled",
+        "adaptive_capacity_inverse_scaled"
+      ),
+      labels = c(
+        "Overall vulnerability (SIFI)",
+        "Exposure",
+        "Sensitivity",
+        "Adaptive capacity (inverse)"
+      )
+    )
+  )
+
+# ---- faceted boxplots with jitter ----
+region_plot<- ggplot(
+  plot_df,
+  aes(
+    x = reorder(continent2, value, FUN = median, decreasing = TRUE),
+    y = value, fill=continent2
+  )
+) +
+  geom_jitter(aes(color=continent2),width = 0.15, alpha = 0.45, size = 1) +
+  geom_boxplot(outlier.shape = NA, alpha =0.7) +
+  facet_wrap(~ metric,ncol=1, scales = "free_y") +
+  labs(x = NULL, y = NULL, fill = "Region" ) +
+  theme_classic() +
+  theme(legend.position="top")+
+  scale_fill_viridis_d()+
+  scale_color_viridis_d()+
+  theme(
+    axis.text.x = element_text(angle = 35, hjust = 1),
+    strip.background = element_blank(),
+    strip.text = element_text(face = "bold")
+  )+
+  theme(text=element_text(size=16))+
+  guides(color = "none") 
+
+
+#Subregion
+
+plot_sub <- df_geo %>%
+  # (optional) keep your Americas combining from before; remove if you don't want it
+  mutate(
+    continent2 = ifelse(
+      continent2 %in% c("Central America & Caribbean", "South America"),
+      "Central & South America",
+      continent2
+    )
+  ) %>%
+  dplyr::select(
+    country_name,
+    continent2,   # <-- keep continent for fill later
+    Subregion,
+    all_of(metrics)
+  ) %>%
+  pivot_longer(
+    cols = all_of(metrics),
+    names_to = "metric",
+    values_to = "value"
+  ) %>% 
+  mutate(
+    metric = factor(
+      metric,
+      levels = c(
+        "SIFI_Index",
+        "exposure_scaled",
+        "sensitivity_scaled",
+        "adaptive_capacity_inverse_scaled"
+      ),
+      labels = c(
+        "Overall vulnerability (SIFI)",
+        "Exposure",
+        "Sensitivity",
+        "Adaptive capacity (inverse)"
+      )
+    )
+  )
+
+
+# faceted boxplots ----
+subregion_plot<- ggplot(plot_sub,   aes(
+   x = value,
+   y = reorder(Subregion, value, FUN = median, decreasing = TRUE),
+   fill = continent2 ) )  +
+  geom_boxplot(outlier.shape = NA, alpha = 0.7) +
+  geom_jitter(width = 0, height = 0.15, alpha = 0.35, size = 0.9) +
+  facet_wrap(~ metric,ncol=1, scales = "free_x") +
+  labs(x = NULL, y = NULL, fill="") +
+  theme_classic() +
+  theme(legend.position="none")+
+  scale_fill_viridis_d()+
+  scale_color_viridis_d()+
+  theme(
+    axis.text.x = element_text(angle = 35, hjust = 1),
+    strip.background = element_blank(),
+    strip.text = element_text(face = "bold")
+  )+
+  theme(text=element_text(size=16))+
+  guides(color = "none") 
+
+
+region_plot+subregion_plot + plot_layout(guides = "collect") &
+  theme(legend.position = "top")
+
+ggsave(
+  here("outputs", "figures", "SI_continents_scores.tiff"),
+  device = "tiff",
+  dpi=300, height=14, width=11)
 
 
 ##########################################################################################################################
