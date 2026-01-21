@@ -239,8 +239,6 @@ gfw_raw <- gfw_raw %>%
 
 #1. Read CSV
 gfw_data <- gfw_raw %>% 
-  filter(ISO_TER1!="IRQ" ) %>% 
-  filter(ISO_TER1!="JOR") %>% 
   filter(dist_km == 25) %>%
   rename(Alpha.3.code = ISO_TER1,
          nonbroadcasting_fishing =dark_fishing) %>%
@@ -1020,7 +1018,7 @@ df <- all_components %>%
   ) 
 
 write.csv( df,
-           here("outputs", "data_tables", "data/SIFI_Index_data.csv"))
+           here( "data", "processed", "SIFI_Index_component_data.csv"))
 
 
 #these are countries for which we have ALL data.above, data are filtered already for these countries only so that 
