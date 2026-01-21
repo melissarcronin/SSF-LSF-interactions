@@ -572,25 +572,24 @@ ggsave(
   dpi=300, height=14, width=8)
 
 
-
+colnames(df_geo)
 
 plot_df <- df_geo %>%
   mutate(
-    continent2 = ifelse(
-      continent2 %in% c("Central America & Caribbean", "South America"),
+    Continent2 = ifelse(
+      Continent2 %in% c("Central America & Caribbean", "South America"),
       "Central & South America",
-      continent2
+      Continent2
     )
   ) %>%
-  dplyr::select(country_name, continent2, all_of(metrics)) %>%
+  dplyr::select(country_name, Continent2, all_of(metrics)) %>%
   pivot_longer(
     cols = all_of(metrics),
     names_to = "metric",
     values_to = "value"
   ) %>%
-  filter(!is.na(value), !is.na(continent2)) %>%
   mutate(
-    continent2 = factor(continent2, levels = c(
+    Continent2 = factor(Continent2, levels = c(
       "Africa", "Asia", "Europe", "Oceania",
       "North America", "Central & South America"
     ))
@@ -617,11 +616,11 @@ plot_df <- df_geo %>%
 region_plot<- ggplot(
   plot_df,
   aes(
-    x = reorder(continent2, value, FUN = median, decreasing = TRUE),
-    y = value, fill=continent2
+    x = reorder(Continent2, value, FUN = median, decreasing = TRUE),
+    y = value, fill=Continent2
   )
 ) +
-  geom_jitter(aes(color=continent2),width = 0.15, alpha = 0.45, size = 1) +
+  geom_jitter(aes(color=Continent2),width = 0.15, alpha = 0.45, size = 1) +
   geom_boxplot(outlier.shape = NA, alpha =0.7) +
   facet_wrap(~ metric,ncol=1, scales = "free_y") +
   labs(x = NULL, y = NULL, fill = "Region" ) +
@@ -643,16 +642,16 @@ region_plot<- ggplot(
 plot_sub <- df_geo %>%
   # (optional) keep your Americas combining from before; remove if you don't want it
   mutate(
-    continent2 = ifelse(
-      continent2 %in% c("Central America & Caribbean", "South America"),
+    Continent2 = ifelse(
+      Continent2 %in% c("Central America & Caribbean", "South America"),
       "Central & South America",
-      continent2
+      Continent2
     )
   ) %>%  
  rename(Subregion = un_subregion)%>%
   dplyr::select(
     country_name,
-    continent2,   # <-- keep continent for fill later
+    Continent2,   # <-- keep continent for fill later
     Subregion,
     all_of(metrics)
   ) %>%
@@ -684,7 +683,7 @@ plot_sub <- df_geo %>%
 subregion_plot<- ggplot(plot_sub,   aes(
    x = value,
    y = reorder(Subregion, value, FUN = median, decreasing = TRUE),
-   fill = continent2 ) )  +
+   fill = Continent2 ) )  +
   geom_boxplot(outlier.shape = NA, alpha = 0.7) +
   geom_jitter(width = 0, height = 0.15, alpha = 0.35, size = 0.9) +
   facet_wrap(~ metric,ncol=1, scales = "free_x") +
@@ -789,6 +788,48 @@ ggsave(
   dpi=300, height=8, width=12)
 
 
+metrics <- c(
+  SIFI_Index = "SIFI Index",
+  exposure_scaled = "Exposure",
+  sensitivity_scaled = "Sensitivity",
+  adaptive_capacity_inverse_scaled = "Low adaptive capacity"
+)
+
+#Identify top countries by region and component 
+results <- df_geo %>%
+  dplyr::select(country_name, Continent2, all_of(names(metrics))) %>%
+  pivot_longer(
+    cols = all_of(names(metrics)),
+    names_to = "metric",
+    values_to = "value"
+  ) %>%
+  group_by(Continent2, metric) %>%
+  arrange(desc(value), .by_group = TRUE) %>%
+  slice_head(n = 3) %>%
+  ungroup()
+
+# ---- print with cat() ----
+cat("\nTop country within each continent by vulnerability metric:\n")
+
+for (m in names(metrics)) {
+  cat("\n", metrics[[m]], ":\n", sep = "")
+  
+  results %>%
+    filter(metric == m) %>%
+    arrange(Continent2) %>%
+    rowwise() %>%
+    { 
+      for (i in seq_len(nrow(.))) {
+        cat(
+          "  - ", .$Continent2[i], ": ",
+          .$country_name[i],
+          " (", round(.$value[i], 2), ")\n",
+          sep = ""
+        )
+      }
+    }
+}
+
 
 
 ##########################################################################################################################
@@ -809,7 +850,7 @@ df <- df %>%
   )
 
 # List of metrics to test
-metrics <- c("exposure_scaled", "sensitivity_scaled", "adaptive_capacity_scaled")
+metrics <- c("SIFI_Index","exposure_scaled", "sensitivity_scaled", "adaptive_capacity_scaled")
 
 # Function to run t-test and return summary stats
 run_tests <- function(var) {
@@ -845,8 +886,8 @@ write.csv( paa_summary_table,
 
 # Reshape data from wide to long for plotting
 df_long <- df %>%
-  dplyr::select(has_PAA, exposure_scaled, sensitivity_scaled, adaptive_capacity_scaled) %>%
-  pivot_longer(cols = c(exposure_scaled, sensitivity_scaled, adaptive_capacity_scaled),
+  dplyr::select(has_PAA, SIFI_Index, exposure_scaled, sensitivity_scaled, adaptive_capacity_scaled) %>%
+  pivot_longer(cols = c(SIFI_Index, exposure_scaled, sensitivity_scaled, adaptive_capacity_scaled),
                names_to = "metric",
                values_to = "value") %>% 
   mutate(
@@ -860,6 +901,7 @@ df_long <- df %>%
 df_long <- df_long %>%
   mutate(
     metric = dplyr::case_when(
+      metric == "SIFI_Index" ~ "SIFI Index",
       metric == "exposure_scaled" ~ "Exposure",
       metric == "sensitivity_scaled" ~ "Sensitivity",
       metric == "adaptive_capacity_scaled" ~ "Adaptive Capacity",
@@ -869,6 +911,7 @@ df_long <- df_long %>%
 
 
 component_colors <- c(
+  "SIFI Index"="maroon",
   "Exposure"          = "#D55E00",
   "Sensitivity"       = "royalblue",
   "Adaptive Capacity" = "lightblue"

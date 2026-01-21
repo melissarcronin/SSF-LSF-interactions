@@ -239,6 +239,8 @@ gfw_raw <- gfw_raw %>%
 
 #1. Read CSV
 gfw_data <- gfw_raw %>% 
+  filter(ISO_TER1!="IRQ" ) %>% 
+  filter(ISO_TER1!="JOR") %>% 
   filter(dist_km == 25) %>%
   rename(Alpha.3.code = ISO_TER1,
          nonbroadcasting_fishing =dark_fishing) %>%
