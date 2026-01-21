@@ -57,7 +57,7 @@ color_scale <- scale_fill_viridis_c(
 
 ###############################################################################
 
-df<- read.csv(here("data", "processed", "df_with_SIFI_score.csv"), sep=",", header=T)  %>%
+df<- read.csv(here("data", "processed", "SIFI_Index_full_data.csv"), sep=",", header=T)  %>%
   dplyr::select(
     Alpha.3.code,
     exposure_scaled,

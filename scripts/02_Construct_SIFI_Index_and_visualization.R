@@ -70,7 +70,7 @@ color_scale <- scale_fill_viridis_c(
 ###############################################################################
 
 colnames(df)
-df<- read.csv(here("data", "processed", "SIFI_Index_data.csv"), sep=",", header=T) %>%
+df<- read.csv(here("data", "processed", "SIFI_Index_component_data.csv"), sep=",", header=T) %>%
   dplyr::select(
     Alpha.3.code,
     exposure_scaled,
@@ -113,14 +113,14 @@ desired_measures <- c("cfi", "tli", "rmsea", "srmr", "chisq", "pvalue", "AIC", "
 colnames(df)
 # CFA model to idnetify important drivers of vulnerability 
 model_V <- '
-    vulnerability =~    crit_1_2+  crit_1_1_B+crit_1_1_A 
+    vulnerability =~    crit_1_2+  crit_1_1
   vulnerability =~  crit_2_1 +crit_2_2 
   vulnerability =~ crit_3_1+ crit_3_2
   
   # Add covariances based on modification indices (determined below)
-crit_1_2 ~~ crit_1_1_B
-crit_2_1 ~~ crit_1_1_A
 
+crit_1_1 ~~ crit_2_1
+crit_1_2 ~~ crit_1_1
  '
 png(here("outputs", "figures", "vulnerability_cfa_sem_plot.png"),  width = 4800, height = 3600, res = 600)
 cfa_model_V <- cfa(model_V, data=df, estimator="MLMV", bootstrap = 1000)
@@ -130,8 +130,7 @@ semPaths(cfa_model_V, what = "est",
          #curvePivot = TRUE,
          layout = "tree",  style = "ram",
           nodeLabels = c( "SSF catch",
-                          "Non-broadcasting LSF density",
-                           "AIS broadcasting LSF density",
+                           "LSF density",
                              "SSF economic value",
                             "SSF nutrition",
                             "development","governance",
@@ -195,6 +194,9 @@ df<- df %>%
          Continent = countrycode(Alpha.3.code, origin = "iso3c", destination = "continent"),
          country = countrycode(Alpha.3.code, origin = "iso3c", destination = "country.name")
   )
+
+write.csv( df,
+           here( "data", "processed", "SIFI_Index_full_data.csv"))
 
 world_shp <- sf::st_as_sf(maps::map("world", plot = F, fill = TRUE))
 world_shp_iso <- world_shp %>%
@@ -873,6 +875,7 @@ run_tests <- function(var) {
 paa_summary_table <- map_df(metrics, run_tests) %>% 
   mutate(
     metric = dplyr::case_when(
+      metric == "SIFI_Index" ~ "SIFI Index",
       metric == "exposure_scaled" ~ "Exposure",
       metric == "sensitivity_scaled" ~ "Sensitivity",
       metric == "adaptive_capacity_scaled" ~ "Adaptive Capacity",
@@ -907,7 +910,13 @@ df_long <- df_long %>%
       metric == "adaptive_capacity_scaled" ~ "Adaptive Capacity",
       TRUE ~ metric
     )
-  )
+  ) %>% 
+  mutate(
+    metric = factor(
+      metric,
+      levels = c("SIFI Index", "Exposure", "Sensitivity", "Adaptive Capacity")
+    )
+  ) 
 
 
 component_colors <- c(
