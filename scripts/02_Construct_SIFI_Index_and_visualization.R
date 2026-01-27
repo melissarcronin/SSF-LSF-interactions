@@ -710,14 +710,17 @@ ggsave(
 colnames(df_geo)
 
 plot_df <- df_geo %>%
- # mutate(
-  #   Continent2 = ifelse(
-  #     Continent2 %in% c("Central America & Caribbean", "South America"),
-  #     "Central & South America",
-  #     Continent2
-  #   )
-  # ) %>%
-  dplyr::select(Country, Continent2, all_of(metrics)) %>%
+  dplyr::select(Country, FAO.Subregion, Continent2, all_of(metrics)) %>%
+  mutate(Continent2 = case_when(
+    FAO.Subregion %in% c("Northern America") ~ "North America",
+    FAO.Subregion %in% c(
+      "Central America",
+      "Caribbean",
+      "South America"
+    ) ~ "Central & South America",
+    TRUE ~ Continent2
+  )
+) %>%
   pivot_longer(
     cols = all_of(metrics),
     names_to = "metric",
@@ -725,8 +728,9 @@ plot_df <- df_geo %>%
   ) %>%
   mutate(
     Continent2 = factor(Continent2, levels = c(
-      "Africa", "Asia", "Europe", "Oceania",
-      "North America", "Central & South America"
+      "Africa", "Oceania", "Asia", "Central & South America",
+      "North America", "Europe"
+
     ))
   ) %>% 
   mutate(
@@ -736,13 +740,13 @@ plot_df <- df_geo %>%
         "SIFI_Index",
         "exposure_scaled",
         "sensitivity_scaled",
-        "adaptive_capacity_inverse_scaled"
+        "adaptive_capacity_scaled"
       ),
       labels = c(
         "Overall vulnerability (SIFI)",
         "Exposure",
         "Sensitivity",
-        "Adaptive capacity (inverse)"
+        "Adaptive capacity"
       )
     )
   )
@@ -751,12 +755,19 @@ plot_df <- df_geo %>%
 region_plot<- ggplot(
   plot_df,
   aes(
-    x = reorder(Continent2, value, FUN = median, decreasing = TRUE),
-    y = value, fill=Continent2
+    x = Continent2, value,  fill=Continent2
   )
 ) +
   geom_jitter(aes(color=Continent2),width = 0.15, alpha = 0.45, size = 1) +
   geom_boxplot(outlier.shape = NA, alpha =0.7) +
+  stat_summary(
+    fun = mean,
+    geom = "point",
+    shape = 23,     # diamond
+    size = 3,
+    fill = "white",
+    color = "black",alpha=0.7
+  ) +
   facet_wrap(~ metric,ncol=1, scales = "free_y") +
   labs(x = NULL, y = NULL, fill = "Region" ) +
   theme_classic() +
@@ -771,6 +782,8 @@ region_plot<- ggplot(
   theme(text=element_text(size=16))+
   guides(color = "none") 
 
+region_plot
+
 
 #Subregion
 
@@ -783,7 +796,16 @@ plot_sub <- df_geo %>%
       Continent2
     )
   ) %>%  
- rename(Subregion = FAO.Subregion)%>%
+  mutate(Continent2 = case_when(
+    FAO.Subregion %in% c("Northern America") ~ "North America",
+    FAO.Subregion %in% c(
+      "Central America",
+      "Caribbean",
+      "South America"
+    ) ~ "Central & South America",
+    TRUE ~ Continent2
+  )) %>%
+  rename(Subregion = FAO.Subregion)%>%
   dplyr::select(
     country,
     Continent2,   # <-- keep continent for fill later
@@ -796,23 +818,27 @@ plot_sub <- df_geo %>%
     values_to = "value"
   ) %>% 
   mutate(
+    Continent2 = factor(Continent2, levels = c(
+      "Africa", "Oceania", "Asia", "Central & South America",
+      "North America", "Europe"
+      
+    ))
+  ) %>% 
+  mutate(
     metric = factor(
       metric,
       levels = c(
         "SIFI_Index",
         "exposure_scaled",
         "sensitivity_scaled",
-        "adaptive_capacity_inverse_scaled"
+        "adaptive_capacity_scaled"
       ),
       labels = c(
         "Overall vulnerability (SIFI)",
         "Exposure",
         "Sensitivity",
-        "Adaptive capacity (inverse)"
-      )
-    )
-  )
-
+        "Adaptive capacity")))
+  
 
 # faceted boxplots ----
 subregion_plot<- ggplot(plot_sub,   aes(
@@ -927,12 +953,12 @@ metrics <- c(
   SIFI_Index = "SIFI Index",
   exposure_scaled = "Exposure",
   sensitivity_scaled = "Sensitivity",
-  adaptive_capacity_inverse_scaled = "Low adaptive capacity"
+  adaptive_capacity_inverse_scaled = "Adaptive capacity"
 )
 
 #Identify top countries by region and component 
 results <- df_geo %>%
-  dplyr::select(country, Continent2, all_of(names(metrics))) %>%
+  dplyr::select(Country, Continent2, all_of(names(metrics))) %>%
   pivot_longer(
     cols = all_of(names(metrics)),
     names_to = "metric",
@@ -957,7 +983,7 @@ for (m in names(metrics)) {
       for (i in seq_len(nrow(.))) {
         cat(
           "  - ", .$Continent2[i], ": ",
-          .$country_name[i],
+          .$Country[i],
           " (", round(.$value[i], 2), ")\n",
           sep = ""
         )
