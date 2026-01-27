@@ -1,0 +1,9 @@
+fit_measure,Structural equation model,Confirmatory factor analysis
+CFI,0.996,0.985
+TLI,0.985,0.955
+ChiSq,5.214,9.622
+p-value,0.266,0.087
+RMSEA,0.049,0.086
+SRMR,0.036,0.048
+AIC,-689.337,-686.929
+BIC,-641.120,-641.549

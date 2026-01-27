@@ -121,8 +121,10 @@ model_V <- '
 
 crit_1_1 ~~ crit_2_1
 crit_1_2 ~~ crit_1_1
+crit_3_1 ~~crit_3_2
+crit_3_1 ~~crit_2_1
  '
-png(here("outputs", "figures", "vulnerability_cfa_sem_plot.png"),  width = 4800, height = 3600, res = 600)
+#png(here("outputs", "figures", "vulnerability_cfa_sem_plot.png"),  width = 4800, height = 3600, res = 600)
 cfa_model_V <- cfa(model_V, data=df, estimator="MLMV", bootstrap = 1000)
 
 semPaths(cfa_model_V, what = "est", 
@@ -152,7 +154,7 @@ semPaths(cfa_model_V, what = "est",
          ) )
 
 
-dev.off()
+#dev.off()
 summary(cfa_model_V, fit.measures=TRUE,  standardized = TRUE)
 lavInspect(cfa_model_V, "theta")
 # Check the fit of the model
@@ -160,11 +162,11 @@ fit_measures_V <- fitMeasures(cfa_model_V, fit.measures = desired_measures)
 fit_measures_V
 vartable(cfa_model_V)
 
-mod_indices <- modificationindices(cfa_model_V)
+mod_indices_cfa <- modificationindices(cfa_model_V)
 # Sort by largest MI
-mod_indices <- mod_indices[order(mod_indices$mi, decreasing = TRUE), ]
+mod_indices_cfa <- mod_indices_cfa[order(mod_indices_cfa$mi, decreasing = TRUE), ]
 # View top 10 suggested modifications
-head(mod_indices, 10)
+head(mod_indices_cfa, 10)
 
 lavInspect(cfa_model_V, "cov.lv")
 
@@ -312,38 +314,34 @@ sem_model <- '
 # Measurement Model
 # baseline indicator, fixed to 1 for identification
 
-E =~ exposure_scaled
-#E =~ crit_1_1_A+ crit_1_1_B + crit_1_2
-#E =~ crit_1_1+ crit_1_2
+E =~ crit_1_2+ crit_1_1
 
 S =~ crit_2_1 + crit_2_2
-#S =~ crit_2_1_A + crit_2_1_B+ crit_2_1_C +  crit_2_1_D+ crit_2_2_A + crit_2_2_B + crit_2_2_C
 
 AC =~ crit_3_1 + crit_3_2
 
 # -----------------------------
 # Structural Model
 # -----------------------------
-# Regression paths capture hypothesized causal effects
-# S is regressed on E: captures the effect of exposure on sensitivity
 
+E ~~ AC
+S ~~ AC
+S ~~ E
 
-E  ~~ AC
-S  ~~ AC
-S~~E
-
- #crit_2_2 ~~ crit_3_1
- #crit_2_2 ~~ crit_3_2
- #crit_2_1 ~~ crit_3_1
-# crit_1_1_B~~crit_3_2
-# crit_1_1_B~~crit_2_2
-# crit_1_1_A~~crit_3_2
-# crit_1_1_B~~crit_1_1_A
+crit_1_1~~crit_2_1
+crit_2_2 ~~ crit_3_1
 
 '
 
 # Fitting the SEM model
 sem_result <- sem(sem_model, data = df, estimator="MLR", std.lv=TRUE)
+
+
+mod_indices_sem <- modificationindices(sem_result)
+# Sort by largest MI
+mod_indices_sem <- mod_indices_sem[order(mod_indices_sem$mi, decreasing = TRUE), ]
+# View top 10 suggested modifications
+head(mod_indices_sem, 10)
 
 # Summarizing the results with fit measures
 summary(sem_result, fit.measures = TRUE)
@@ -394,8 +392,39 @@ loadings_cfa_sem <- bind_rows(pe_cfa, pe_sem) %>%
   arrange(Latent, Indicator, Model)
 
 # Save + display
-write.csv(loadings_cfa_sem, here("outputs", "data_tables", "factor_loadings_CFA_vs_SEM.csv"), row.names = FALSE)
+write.csv(loadings_cfa_sem, here("outputs", "data_tables", "factor_loadings_CFA_SEM.csv"), row.names = FALSE)
 
+
+#save both fit measures tables 
+
+fit_measures_sem
+fit_measures_V
+
+
+# Convert to data frames with metric names as a column
+sem_df <- data.frame(
+  fit_measure = names(fit_measures_sem),
+  SEM = as.numeric(fit_measures_sem),
+  row.names = NULL
+)
+
+cfa_df <- data.frame(
+  fit_measure = names(fit_measures_V),
+  CFA = as.numeric(fit_measures_V),
+  row.names = NULL
+)
+
+# Join by fit_measure
+fit_df <- merge(sem_df, cfa_df, by = "fit_measure", all = TRUE)
+
+
+write.csv(
+  fit_df,
+  here("outputs", "data_tables", "fit_measures_CFA_SEM.csv"),
+  row.names = FALSE
+)
+
+fit_df
 
 
 
@@ -485,28 +514,33 @@ ggsave(
 
 cor(df$index_mean_scaled, df$cfa_vulnerability_score)
 
+#Examine geographic differences in scores ####################################
 
+#add grouped bars by subregions and continents
 
-#add grouped bars by CONTINENTS
-
-
-#examine contintent differences 
 df_geo <- df %>%
-    mutate(
-      country_name = ifelse(
-        !is.na(country) & country != "",
-        country,
-        countrycode(Alpha.3.code, "iso3c", "country.name.en")    ),
-      un_subregion  = countrycode(Alpha.3.code, "iso3c", "un.regionsub.name"),
-      continent_raw = countrycode(Alpha.3.code, "iso3c", "continent"),
-      Continent2 = case_when(
-        continent_raw == "Americas" & un_subregion == "Northern America" ~
-          "North America",
-        continent_raw == "Americas" & un_subregion == "Latin America and the Caribbean" ~
-          "Central & South America",
-        continent_raw == "Americas" ~
-          "Central & South America",  # fallback if any odd Americas cases
-        TRUE ~ continent_raw))
+  mutate( Country = countrycode(Alpha.3.code,
+                                origin = "iso3c",
+                                destination = "country.name"),
+          FAO.Region = countrycode(Alpha.3.code,
+                                   origin = "iso3c",
+                                   destination = "region"),
+          FAO.Subregion = countrycode(Alpha.3.code,
+                                      origin = "iso3c",
+                                      destination = "region23"),
+          continent_raw = countrycode(Alpha.3.code,
+                                      origin = "iso3c",
+                                      destination = "continent")
+  ) %>% 
+  mutate(
+    Continent2 = case_when(
+      continent_raw == "Americas" & FAO.Region == "Northern America" ~ "North America",
+      continent_raw == "Americas" & FAO.Region == "Latin America & Caribbean" ~ "Central & South America",
+      continent_raw == "Americas" ~ "Central & South America",
+      TRUE ~ continent_raw
+    )
+  )
+
 metrics <- c(
   "SIFI_Index",
   "exposure_scaled",
@@ -577,14 +611,14 @@ ggsave(
 colnames(df_geo)
 
 plot_df <- df_geo %>%
-  mutate(
-    Continent2 = ifelse(
-      Continent2 %in% c("Central America & Caribbean", "South America"),
-      "Central & South America",
-      Continent2
-    )
-  ) %>%
-  dplyr::select(country_name, Continent2, all_of(metrics)) %>%
+ # mutate(
+  #   Continent2 = ifelse(
+  #     Continent2 %in% c("Central America & Caribbean", "South America"),
+  #     "Central & South America",
+  #     Continent2
+  #   )
+  # ) %>%
+  dplyr::select(Country, Continent2, all_of(metrics)) %>%
   pivot_longer(
     cols = all_of(metrics),
     names_to = "metric",
@@ -650,9 +684,9 @@ plot_sub <- df_geo %>%
       Continent2
     )
   ) %>%  
- rename(Subregion = un_subregion)%>%
+ rename(Subregion = FAO.Subregion)%>%
   dplyr::select(
-    country_name,
+    country,
     Continent2,   # <-- keep continent for fill later
     Subregion,
     all_of(metrics)
@@ -709,7 +743,7 @@ region_plot+subregion_plot + plot_layout(guides = "collect") &
 ggsave(
   here("outputs", "figures", "SI_continents_scores.tiff"),
   device = "tiff",
-  dpi=300, height=14, width=11)
+  dpi=300, height=16, width=11)
 
 
 
@@ -799,7 +833,7 @@ metrics <- c(
 
 #Identify top countries by region and component 
 results <- df_geo %>%
-  dplyr::select(country_name, Continent2, all_of(names(metrics))) %>%
+  dplyr::select(country, Continent2, all_of(names(metrics))) %>%
   pivot_longer(
     cols = all_of(names(metrics)),
     names_to = "metric",

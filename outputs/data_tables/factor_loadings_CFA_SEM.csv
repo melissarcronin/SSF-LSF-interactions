@@ -1,0 +1,13 @@
+Model,Latent,Indicator,Est,SE,z,p,Std
+CFA  ,vulnerability,Driver 1_2,1.000,-,-,-,-
+CFA  ,vulnerability,Driver 1_1,0.101,0.128,0.791,0.429,0.061
+CFA  ,vulnerability,Driver 2_1,0.820,0.180,4.549,0.000,0.604
+CFA  ,vulnerability,Driver 2_2,1.359,0.288,4.725,0.000,0.727
+CFA  ,vulnerability,Driver 3_1,-2.461,0.549,-4.483,0.000,-0.815
+CFA  ,vulnerability,Driver 3_2,-1.444,0.325,-4.437,0.000,-0.638
+SEM  ,AC,Driver 3_1,0.259,0.018,14.373,0.000,0.914
+SEM  ,AC,Driver 3_2,0.184,0.014,13.363,0.000,0.863
+SEM  ,E,Driver 1_1,0.040,0.025,1.626,0.104,0.256
+SEM  ,E,Driver 1_2,0.308,0.153,2.015,0.044,1.706
+SEM  ,S,Driver 2_1,0.080,0.009,8.661,0.000,0.625
+SEM  ,S,Driver 2_2,0.117,0.019,6.171,0.000,0.661
