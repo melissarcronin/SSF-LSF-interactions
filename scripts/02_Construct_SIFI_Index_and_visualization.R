@@ -172,22 +172,11 @@ lavInspect(cfa_model_V, "cov.lv")
 
 # Plot the CFA results
 
-
-
-
 # Calculate the factor scores -these are the SIFI scores!
 factor_scores <- lavPredict(cfa_model_V, type = "lv")
 
 # Add factor scores to your dataframe
 df$cfa_vulnerability_score <- factor_scores
-
-cfa_comparison<-df %>% 
-  ggplot(aes(x=fct_reorder(country_ISO_alpha3, -cfa_vulnerability_score), y=-cfa_vulnerability_score ,fill= index_mean_scaled))+
-  geom_col()+
-  scale_fill_viridis(direction=-1, option="magma")+
-  coord_flip()+
-  theme_classic()+
-  labs(x="Country", y="CFA vulnerability score", fill = "Mean(E, S, AC)")
 
 
 df<- df %>% 
@@ -200,12 +189,113 @@ df<- df %>%
 write.csv( df,
            here( "data", "processed", "SIFI_Index_full_data.csv"))
 
+
+
+
+#VALIDATE THE CFA-DERIVED SIFI SCORES - how well do they align with other methods of index calculation?
+#compare with means (used by Allison et al.) and PCA 
+
+
+#make PCA to compar 
+comp_cols <- c("exposure_scaled", "sensitivity_scaled", "adaptive_capacity_scaled")
+pca_fit <- prcomp(df[, comp_cols], center = TRUE, scale. = TRUE)
+
+df$index_pca_raw <- as.numeric(pca_fit$x[, 1])
+
+# orient PC1 so higher = higher CFA score (optional but helpful)
+if (cor(df$index_pca_raw, df$SIFI_Index, use = "complete.obs") < 0) {
+  df$index_pca_raw <- -df$index_pca_raw
+}
+
+df$index_pca_scaled <- scales::rescale(df$index_pca_raw, to = c(0, 1))
+
+# Mean vs PCA
+A <- df %>%
+  ggplot(aes(
+    x = fct_reorder(Alpha.3.code, index_pca_scaled),
+    y = index_pca_scaled,
+    fill = index_mean_scaled
+  )) +
+  geom_col() +
+  scale_fill_viridis(direction = -1, option = "magma") +
+  coord_flip() +
+  theme_classic() +
+  labs(x = "Country", y = "PCA PC1(E, S, AC)", fill = "Mean(E, S, AC)")
+
+A
+
+#mean vs SIFI Index
+B<-df %>% 
+  ggplot(aes(x=fct_reorder(Alpha.3.code, SIFI_Index), 
+             y=SIFI_Index ,fill= index_mean_scaled))+
+  geom_col()+
+  scale_fill_viridis(direction=-1, option="magma")+
+  coord_flip()+
+  theme_classic()+
+  labs(x="Country", y="CFA Score", fill = "Mean(E, S, AC)")
+
+B
+
+# C: PCA vs CFA 
+
+C <- df %>%
+  ggplot(aes(
+    x = fct_reorder(Alpha.3.code, SIFI_Index),
+    y = SIFI_Index,
+    fill = index_pca_scaled
+  )) +
+  geom_col() +
+  scale_fill_viridis(direction = -1, option = "magma") +
+  coord_flip() +
+  theme_classic() +
+  labs(x = "Country", y = "CFA Score", fill = "PCA PC1(E, S, AC)")
+
+C
+
+country_comparisons <- A+B+C
+
+# Helper function for ggplot scatter + regression
+gg_scatter <- function(data, x, y, xlab, ylab, title) {
+  ggplot(data, aes(x = .data[[x]], y = .data[[y]])) +
+    geom_point(color = "steelblue", alpha = 0.7) +
+    geom_smooth(method = "lm", se = FALSE, color = "red") +
+    theme_classic() +
+    labs(x = xlab, y = ylab, title = title)
+}
+
+# A) Mean vs PCA
+pA <- gg_scatter(df, "index_mean_scaled", "index_pca_scaled",
+                 "Mean (E, S, AC)", "PCA PC1",
+                 "A) Mean vs PCA")
+
+# B) Mean vs CFA
+pB <- gg_scatter(df, "index_mean_scaled", "SIFI_Index",
+                 "Mean (E, S, AC)", "CFA score",
+                 "B) Mean vs CFA")
+
+# C) PCA vs CFA
+pC <- gg_scatter(df, "index_pca_scaled", "SIFI_Index",
+                 "PCA PC1", "CFA score",
+                 "C) PCA vs CFA")
+
+methods_comparison<- (pA | pB | pC)
+
+# Combine into one figure
+methods_comparison/ country_comparisons+  plot_layout(heights = c(1, 4)) 
+
+ggsave(
+  here("outputs", "figures", "Methods_comparisons.tiff"),
+  device = "png",
+  dpi=300, width=12, height=15)
+
+
+
 world_shp <- sf::st_as_sf(maps::map("world", plot = F, fill = TRUE))
 world_shp_iso <- world_shp %>%
   mutate(Alpha.3.code = countrycode(sourcevar = ID, origin = "country.name", destination = "iso3c"))
 
 df_spatial <- merge(world_shp_iso, df,by="Alpha.3.code" )
-colnames(df_spatial)
+
 SIFI_map<-ggplot() +
   geom_sf(data = world_shp_iso , fill = "gray", color = "lightgrey") +
   geom_sf(data=df_spatial, aes(fill =SIFI_Index), color = "lightgrey")+
@@ -254,23 +344,6 @@ ggsave(
   dpi=300, width=6, height=9)
 
 
-# Scatter plot of the composite index against the simpler methods of calculating the SIFI Index
-plot(df$index_mean_scaled, df$SIFI_Index,
-     xlab = "Mean(E, S, AC)", ylab = "CFA vulnerability score",
-     main = "Score Means vs. CFA Fit", col = "blue", pch = 16)
-
-# Add regression line
-lm_model <- lm(SIFI_Index ~ index_mean_scaled, data = df)
-summary(lm_model)
-abline(lm_model, col = "red")
-
-# Print the model summary on the plot
-summary_text <- paste("Model Fit:\n",
-                      "Intercept:", round(coef(lm_model)[1], 3), "\n",
-                      "CFA Coefficient:", round(coef(lm_model)[2], 3), "\n",
-                      "R-squared:", round(summary(lm_model)$r.squared, 3))
-mtext(summary_text, side = 3, line = -8, adj = 0, col = "red")
-
 
 # Plot the CFA results
 factor_loadings <- lavInspect(cfa_model_V, "std.lv")
@@ -282,11 +355,12 @@ loadings <- as.vector(factor_loadings[[1]])
 loadings_df <- as.data.frame(as.table(factor_loadings$lambda))
 colnames(loadings_df) <- c("variable", "factor", "loading")
 
-ggplot(loadings_df, aes(x = factor, y = loading, fill = variable)) +
+factor_loadings_cfa<-ggplot(loadings_df, aes(x = factor, y = loading, fill = variable)) +
   geom_bar(stat = "identity", position = "dodge") +
-  labs(title = "Factor Loadings", x = "Factor", y = "Loading") +
+  labs(title = "Factor Loadings (confirmatory factor analysis)", x = "Factor", y = "Loading") +
   theme_minimal() +
   theme(legend.position = "top")
+factor_loadings_cfa
 
 #this plot shows factor loadings, which represent the strength and direction of the relationships between the latent variables (factors) 
 #and the observed variables (indicators or items) in your confirmatory factor analysis (CFA) model. 
@@ -336,7 +410,6 @@ crit_2_2 ~~ crit_3_1
 # Fitting the SEM model
 sem_result <- sem(sem_model, data = df, estimator="MLR", std.lv=TRUE)
 
-
 mod_indices_sem <- modificationindices(sem_result)
 # Sort by largest MI
 mod_indices_sem <- mod_indices_sem[order(mod_indices_sem$mi, decreasing = TRUE), ]
@@ -369,6 +442,32 @@ mod_indices <- mod_indices[order(mod_indices$mi, decreasing = TRUE), ]
 
 # View top 10 suggested modifications
 head(mod_indices, 10)
+
+
+# Plot the SEM factor loadings results
+factor_loadings_sem <- lavInspect(sem_result, "std.lv")
+# Extract factor names and loadings separately
+factor_names_sem <- colnames(factor_loadings_sem[[1]])
+loadings_sem <- as.vector(factor_loadings_sem[[1]])
+
+# Create a data frame
+loadings_df_sem <- as.data.frame(as.table(factor_loadings_sem$lambda))
+colnames(loadings_df_sem) <- c("variable", "factor", "loading")
+
+factor_loadings_sem<-ggplot(loadings_df_sem, aes(x = factor, y = loading, fill = variable)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Factor Loadings (structural equation model)", x = "Factor", y = "Loading") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+factor_loadings_cfa / factor_loadings_sem
+
+ggsave(
+  here("outputs", "figures", "factor_loadings.tiff"),
+  device = "tiff",
+  dpi=300, width=8, height=10)
+
+
 
 #make table for supplement
 
