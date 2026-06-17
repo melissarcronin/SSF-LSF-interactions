@@ -318,7 +318,7 @@ shapiro.test(crit_1_1_data$crit_1_1)
 
 
 #####Calculate SSF catch scaled relative to nearshore area for each country ###########
-#THIS DATA IS CONFIDENTIAL AND CANNOT BE SHARED. Calculation details remain here to clarify how the data was used in the analysis.  
+#THIS DATA CANNOT BE SHARED. Calculation details remain here to clarify how the data was used in the analysis.  
 
 # ssf_catch<- read.csv( here("data", "raw", "ssf_catch.csv"), sep=",", header=TRUE) %>% 
 #   filter(Marine_Inland_char=="Marine") %>% 
@@ -1214,7 +1214,7 @@ df_summary_stats <- df %>%
 df_summary_stats
 write.csv(
   df_summary_stats,
-  here("outputs", "data_tables", "summary_statistics_components_drivers_crits.csv"),
+  here("outputs", "data_tables", "Table_S1_summary_statistics_components_drivers_crits.csv"),
   row.names = FALSE
 )
 

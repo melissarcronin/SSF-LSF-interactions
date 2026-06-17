@@ -7,7 +7,7 @@
 #
 # Author: Melissa Cronin
 # Created: 2024-06-14
-# Last Updated: 2025-12-23
+# Last Updated: 2026-06-17
 #
 # Inputs:
 #   - data/SIFI_Index_data.csv
@@ -180,14 +180,22 @@ df$cfa_vulnerability_score <- factor_scores
 
 
 df<- df %>% 
+  ungroup() %>% 
   mutate(cfa_mean_vulnerability= rowMeans( cfa_vulnerability_score)) %>% 
-  mutate(SIFI_Index= scales::rescale(cfa_mean_vulnerability),
-         Continent = countrycode(Alpha.3.code, origin = "iso3c", destination = "continent"),
-         country = countrycode(Alpha.3.code, origin = "iso3c", destination = "country.name")
-  )
+  #mutate( SIFI_Index = scales::rescale(cfa_mean_vulnerability, to = c(0, 1), na.rm = TRUE),
+         
+    mutate(
+      cfa_mean_vulnerability = as.numeric(cfa_vulnerability_score),
+      SIFI_Index_raw = scales::rescale(
+        cfa_mean_vulnerability,
+        to = c(0, 1),
+        from = range(cfa_mean_vulnerability, na.rm = TRUE)
+      ),
+      SIFI_Index = SIFI_Index_raw^1.5,#to scale to color 
+    Continent = countrycode(Alpha.3.code, origin = "iso3c", destination = "continent"),
+         country = countrycode(Alpha.3.code, origin = "iso3c", destination = "country.name") )
 
-write.csv( df,
-           here( "data", "processed", "SIFI_Index_full_data.csv"))
+write.csv( df, here( "data", "processed", "SIFI_Index_full_data.csv"))
 
 
 
@@ -289,12 +297,21 @@ ggsave(
   dpi=300, width=12, height=15)
 
 
-
+######################### Plot SIFI Index ########################
 world_shp <- sf::st_as_sf(maps::map("world", plot = F, fill = TRUE))
 world_shp_iso <- world_shp %>%
   mutate(Alpha.3.code = countrycode(sourcevar = ID, origin = "country.name", destination = "iso3c"))
 
 df_spatial <- merge(world_shp_iso, df,by="Alpha.3.code" )
+
+color_scale <- scale_fill_viridis_c(
+  option = "magma",
+  direction = -1,
+  begin = 0,
+  end = 1,
+  na.value = "gray",
+  limits = color_range
+)
 
 SIFI_map<-ggplot() +
   geom_sf(data = world_shp_iso , fill = "gray", color = "lightgrey") +
@@ -362,6 +379,8 @@ factor_loadings_cfa<-ggplot(loadings_df, aes(x = factor, y = loading, fill = var
   theme(legend.position = "top")
 factor_loadings_cfa
 
+
+
 #this plot shows factor loadings, which represent the strength and direction of the relationships between the latent variables (factors) 
 #and the observed variables (indicators or items) in your confirmatory factor analysis (CFA) model. 
 #In a CFA model, each latent variable is associated with a set of observed variables, and the factor loadings indicate 
@@ -423,7 +442,7 @@ fit_measures_sem
 
 
 # Plotting the SEM results
-#png(here("outputs", "figures", "components_sem_plot.png"),  width = 4800, height = 3600, res = 600)
+png(here("outputs", "figures", "components_sem_plot.png"),  width = 4800, height = 3600, res = 600)
 
 semPaths(sem_result,  style = "lisrel", curvePivot = TRUE, layout = "circle",
          what = "std",         # Show raw/unstandardized estimates
@@ -432,7 +451,7 @@ semPaths(sem_result,  style = "lisrel", curvePivot = TRUE, layout = "circle",
          negCol = c("red3", "red3")      
 )
 
-#dev.off()
+dev.off()
 lavInspect(sem_result, "cov.lv")
 
 mod_indices <- modificationindices(sem_result)
@@ -608,6 +627,7 @@ ggsave(
   here("outputs", "figures", "component_lms.tiff"),
   device = "tiff",
   dpi=300, width=14, height=6)
+
 
 
 

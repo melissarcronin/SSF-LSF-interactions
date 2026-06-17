@@ -7,7 +7,7 @@
 #
 # Author: Melissa Cronin
 # Created: 2024-06-14
-# Last Updated: 2025-12-23
+# Last Updated: 2026-06-17
 #
 # Inputs:
 #   - data/SIFI_Index_data.csv
@@ -103,7 +103,7 @@ bright_spot_deltas <- df %>%
   filter( Exposure_Delta < 0,
          Sensitivity_Delta > 0,
          Adaptive_Capacity_Delta < 0 ) %>%
-  select(Country, Alpha.3.code, FAO.Subregion,
+  dplyr::select(Country, Alpha.3.code, FAO.Subregion,
          Exposure_Delta, Sensitivity_Delta, Adaptive_Capacity_Delta) %>%
   
   pivot_longer(
