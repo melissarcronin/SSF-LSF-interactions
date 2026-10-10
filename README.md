@@ -8,25 +8,20 @@ The SIFI framework integrates indicators of **exposure**, **sensitivity**, and *
 
   ## Repository Structure
 
-  SSF-LSF_interactions/
-  ├── SSF-LSF_interactions.Rproj
+SSF-LSF_interactions/
+├── SSF-LSF_interactions.Rproj
 ├── README.md
 ├── .gitignore
-│
 ├── data/
-  │ ├── raw/ # Raw, unprocessed input data
-  │ ├── processed/ # Cleaned and standardized datasets
-  │
+│   ├── raw/          # Raw, unprocessed input data
+│   └── processed/    # Cleaned and standardized datasets
 ├── scripts/
-  │ ├── 01-data_cleaning_sensitivity_analyses.R
-│ ├── 02_Construct_SIFI_Index_and_visualization.R
-│ └── 03-Bright_spots_analysis.R
-│
-├── outputs/
-  │ ├── figures/ # Generated figures
-  │ └── data_tables/ # Summary tables and derived outputs
-  │
-
+│   ├── 01-data_cleaning_sensitivity_analyses.R
+│   ├── 02_Construct_SIFI_Index_and_visualization.R
+│   └── 03-Bright_spots_analysis.R
+└── outputs/
+    ├── figures/      # Generated figures
+    └── data_tables/  # Summary tables and derived outputs
 ---
 
   ## Workflow Overview
