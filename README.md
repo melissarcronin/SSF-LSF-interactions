@@ -7,7 +7,7 @@ The SIFI framework integrates indicators of **exposure**, **sensitivity**, and *
 ---
 
   ## Repository Structure
-
+  
 SSF-LSF_interactions/
 ├── SSF-LSF_interactions.Rproj
 ├── README.md
@@ -22,7 +22,6 @@ SSF-LSF_interactions/
 └── outputs/
     ├── figures/      # Generated figures
     └── data_tables/  # Summary tables and derived outputs
----
 
   ## Workflow Overview
 
